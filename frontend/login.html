@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Iniciar sesión</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/" class="marca"><img src="/assets/logo.svg" alt="Instituto Universe" /></a>
+      <a href="/niveles.html" class="enlace-volver">← Cambiar nivel o rol</a>
+    </header>
+
+    <main>
+      <div class="panel-form aparecer">
+        <div class="encabezado-form">
+          <img src="/assets/isotipo.svg" alt="" />
+          <h1>Iniciar sesión</h1>
+          <div class="contexto-seleccion">
+            <span class="nivel-seleccionado" id="etiqueta-nivel"></span>
+            <span class="nivel-seleccionado rol" id="etiqueta-rol"></span>
+          </div>
+        </div>
+
+        <div class="mensaje-form" id="mensaje" role="alert"></div>
+
+        <form id="form-login" novalidate>
+          <div class="campo">
+            <label for="email">Email o usuario</label>
+            <input type="email" id="email" name="email" placeholder="tu@email.com" autocomplete="username" required />
+          </div>
+          <div class="campo">
+            <label for="password">Contraseña</label>
+            <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required />
+          </div>
+          <button type="submit" class="boton boton-primario" id="boton-login">Ingresar</button>
+        </form>
+
+        <p class="alternar-auth"><a href="/recuperar.html">¿Olvidaste tu contraseña?</a></p>
+        <p class="alternar-auth">¿No tienes cuenta? <a href="/registro.html">Regístrate</a></p>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const seleccion = App.exigirSeleccion();
+
+    if (seleccion) {
+      document.getElementById('etiqueta-nivel').textContent = App.NIVELES[seleccion.nivel].nombre;
+      document.getElementById('etiqueta-rol').textContent = App.ROLES[seleccion.rol].nombre;
+
+      const form = document.getElementById('form-login');
+      const mensaje = document.getElementById('mensaje');
+      const boton = document.getElementById('boton-login');
+
+      form.addEventListener('submit', async (evento) => {
+        evento.preventDefault();
+        App.ocultarMensaje(mensaje);
+
+        const email = form.email.value.trim();
+        const password = form.password.value;
+
+        if (!email || !password) {
+          App.mostrarMensaje(mensaje, 'Completa tu email y contraseña para continuar.', 'error');
+          return;
+        }
+
+        boton.disabled = true;
+        boton.textContent = 'Ingresando…';
+        try {
+          const respuesta = await App.post('/api/auth/login', { email, password });
+          App.guardarSesion(respuesta.token, respuesta.usuario);
+          App.mostrarMensaje(mensaje, respuesta.message, 'exito');
+          window.location.href = '/panel.html';
+        } catch (error) {
+          App.mostrarMensaje(mensaje, error.message, 'error');
+          boton.disabled = false;
+          boton.textContent = 'Ingresar';
+        }
+      });
+    }
+  </script>
+</body>
+</html>

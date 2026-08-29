@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Usuarios</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1><span class="destello">Usuarios</span></h1>
+          <p class="subtitulo" id="subtitulo">Cuentas registradas en la plataforma</p>
+        </div>
+
+        <div class="barra-busqueda" id="barra" hidden>
+          <input type="text" class="input-mini" id="buscar" placeholder="🔎 Buscar por nombre, email o rol…" />
+        </div>
+
+        <div class="lista-usuarios" id="lista">
+          <p class="cargando">Cargando usuarios…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let estado = { usuarios: [], miId: null, rolesAsignables: [] };
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    function fecha(iso) {
+      return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+
+    async function api(metodo, ruta, body) {
+      const token = App.obtenerToken();
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function render() {
+      const filtro = (document.getElementById('buscar').value || '').toLowerCase().trim();
+      const cont = document.getElementById('lista');
+
+      const visibles = estado.usuarios.filter((u) => {
+        if (!filtro) return true;
+        const rolNombre = (App.ROLES[u.rol] || {}).nombre || u.rol;
+        return `${u.nombre} ${u.apellido} ${u.email} ${rolNombre}`.toLowerCase().includes(filtro);
+      });
+
+      if (!visibles.length) {
+        cont.innerHTML = '<p class="cargando">No se encontraron usuarios.</p>';
+        return;
+      }
+
+      cont.innerHTML = visibles.map((u) => {
+        const rolNombre = (App.ROLES[u.rol] || {}).nombre || u.rol;
+        const soyYo = u.id === estado.miId;
+        // Secretaría no puede tocar cuentas de Dirección/Secretaría (igual que el backend).
+        const protegida = estado.miRol === 'secretaria' && ['director', 'secretaria'].includes(u.rol);
+        const gestionable = !soyYo && !protegida;
+
+        const acciones = gestionable ? `
+          <select class="input-mini select-rol" data-rol-de="${u.id}">
+            ${estado.rolesAsignables.map((r) =>
+              `<option value="${r}" ${r === u.rol ? 'selected' : ''}>${(App.ROLES[r] || {}).nombre || r}</option>`).join('')}
+          </select>
+          <button class="btn-mini peligro" data-borrar="${u.id}">Eliminar</button>`
+          : `<span class="codigo-meta">${soyYo ? 'Sos vos' : 'Protegida'}</span>`;
+
+        return `
+          <div class="fila-usuario">
+            <div class="fila-info">
+              <span class="usuario-nombre-lista">${esc(u.nombre)} ${esc(u.apellido)} ${soyYo ? '<span class="etiqueta-vos">vos</span>' : ''}</span>
+              <span class="codigo-meta">${esc(u.email)} · ${rolNombre} · desde ${fecha(u.creado_en)}</span>
+            </div>
+            <div class="fila-acciones">${acciones}</div>
+          </div>`;
+      }).join('');
+
+      cont.querySelectorAll('[data-rol-de]').forEach((s) =>
+        s.addEventListener('change', () => cambiarRol(s.dataset.rolDe, s.value)));
+      cont.querySelectorAll('[data-borrar]').forEach((b) =>
+        b.addEventListener('click', () => borrar(b.dataset.borrar)));
+    }
+
+    async function cargar() {
+      try {
+        const data = await api('GET', '/api/usuarios');
+        estado.usuarios = data.usuarios;
+        estado.miId = data.miId;
+        estado.miRol = data.miRol;
+        estado.rolesAsignables = data.rolesAsignables;
+        document.getElementById('barra').hidden = false;
+        document.getElementById('subtitulo').textContent =
+          `${data.usuarios.length} cuenta${data.usuarios.length === 1 ? '' : 's'} registrada${data.usuarios.length === 1 ? '' : 's'}`;
+        render();
+      } catch (error) {
+        document.getElementById('lista').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    async function cambiarRol(id, rol) {
+      try {
+        await api('PATCH', `/api/usuarios/${id}/rol`, { rol });
+        App.toast('Rol actualizado');
+        await cargar();
+      } catch (error) {
+        App.toast(error.message);
+        await cargar();
+      }
+    }
+
+    async function borrar(id) {
+      try {
+        await api('DELETE', `/api/usuarios/${id}`);
+        App.toast('Cuenta eliminada');
+        await cargar();
+      } catch (error) {
+        App.toast(error.message);
+      }
+    }
+
+    document.getElementById('buscar').addEventListener('input', render);
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'director' && usuario.rol !== 'secretaria') {
+        document.getElementById('lista').innerHTML =
+          '<p class="cargando">Tu rol no puede gestionar usuarios.</p>';
+        return;
+      }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

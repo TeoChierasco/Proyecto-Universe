@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Plan de estudios</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1>Plan de <span class="destello">estudios</span></h1>
+          <p class="subtitulo" id="subtitulo">Nivel Secundario · 5 años</p>
+        </div>
+
+        <div class="anios-lista" id="anios">
+          <p class="cargando">Cargando plan de estudios…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const ORDINAL = { 1: '1.º', 2: '2.º', 3: '3.º', 4: '4.º', 5: '5.º' };
+    let usuario = null;
+    let puedeEditar = false;
+
+    function esc(t) {
+      return String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    function chip(m) {
+      const x = puedeEditar ? `<button class="chip-x" data-del-materia="${m.id}" title="Eliminar">×</button>` : '';
+      return `<span class="chip-materia">${esc(m.nombre)}${x}</span>`;
+    }
+
+    function chipDivision(c) {
+      const x = puedeEditar ? `<button class="chip-x" data-del-curso="${c.id}" title="Eliminar">×</button>` : '';
+      return `<span class="chip-division">${esc(c.division)}${x}</span>`;
+    }
+
+    function editorDivision(anio) {
+      if (!puedeEditar) return '';
+      return `
+        <div class="agregar-linea">
+          <input class="input-mini input-nueva-division" maxlength="4" placeholder="Ej: D" />
+          <button class="btn-mini" data-add-curso="${anio}">+ División</button>
+        </div>`;
+    }
+
+    function editorAnio(anio, talleresAnio) {
+      if (!puedeEditar) return '';
+      const opciones = ['<option value="">Sin taller</option>']
+        .concat(talleresAnio.map((t) => `<option value="${t.id}">${esc(t.nombre)}</option>`))
+        .join('');
+      return `
+        <div class="editor-anio">
+          <div class="agregar-linea">
+            <input class="input-mini input-nueva-materia" placeholder="Nueva materia…" />
+            <select class="input-mini select-taller">${opciones}</select>
+            <button class="btn-mini" data-add-materia="${anio}">+ Materia</button>
+          </div>
+          <div class="agregar-linea">
+            <input class="input-mini input-nuevo-taller" placeholder="Nuevo taller…" />
+            <button class="btn-mini" data-add-taller="${anio}">+ Taller</button>
+          </div>
+        </div>`;
+    }
+
+    function render(estructura) {
+      const cont = document.getElementById('anios');
+      const { anios, materias, talleres } = estructura;
+      const cursos = estructura.cursos || [];
+
+      cont.innerHTML = anios.map((anio) => {
+        const delAnio = materias.filter((m) => m.anio === anio);
+        const talleresAnio = talleres.filter((t) => t.anio === anio);
+        const cursosAnio = cursos.filter((c) => c.anio === anio);
+        const regulares = delAnio.filter((m) => !m.taller_id);
+
+        const bloquesTaller = talleresAnio.map((t) => {
+          const sub = delAnio.filter((m) => m.taller_id === t.id);
+          const eliminar = puedeEditar
+            ? `<button class="btn-mini peligro" data-del-taller="${t.id}">Eliminar taller</button>` : '';
+          return `
+            <div class="taller-box">
+              <div class="taller-titulo">${App.icono('wrench', 'ico-taller')} ${esc(t.nombre)} ${eliminar}</div>
+              <div class="materias-grid">${sub.map(chip).join('') || '<span class="codigo-meta">Sin materias aún</span>'}</div>
+            </div>`;
+        }).join('');
+
+        const divisionesVacio = cursosAnio.length === 0
+          ? '<p class="anio-proximamente">Sin divisiones todavía.</p>' : '';
+        const materiasVacio = (delAnio.length === 0 && talleresAnio.length === 0)
+          ? '<p class="anio-proximamente">Sin materias todavía.</p>' : '';
+
+        return `
+          <section class="anio-bloque" data-anio="${anio}">
+            <h2 class="anio-titulo">${ORDINAL[anio]} año</h2>
+
+            <div class="sub-bloque">
+              <span class="sub-titulo">Divisiones</span>
+              ${divisionesVacio}
+              <div class="materias-grid">${cursosAnio.map(chipDivision).join('')}</div>
+              ${editorDivision(anio)}
+            </div>
+
+            <div class="sub-bloque">
+              <span class="sub-titulo">Materias</span>
+              ${materiasVacio}
+              <div class="materias-grid">${regulares.map(chip).join('')}</div>
+              ${bloquesTaller}
+              ${editorAnio(anio, talleresAnio)}
+            </div>
+          </section>`;
+      }).join('');
+    }
+
+    async function api(metodo, ruta, body) {
+      const token = App.obtenerToken();
+      const r = await fetch('/api/academico' + ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    async function cargar() {
+      try {
+        const data = await api('GET', '/estructura');
+        render(data);
+      } catch (e) {
+        document.getElementById('anios').innerHTML =
+          '<p class="cargando">No se pudo cargar el plan de estudios.</p>';
+      }
+    }
+
+    document.getElementById('anios').addEventListener('click', async (e) => {
+      const t = e.target;
+      const seccion = t.closest('section');
+      try {
+        if (t.dataset.delMateria) {
+          await api('DELETE', `/materias/${t.dataset.delMateria}`);
+          App.toast('Materia eliminada'); await cargar();
+        } else if (t.dataset.delTaller) {
+          await api('DELETE', `/talleres/${t.dataset.delTaller}`);
+          App.toast('Taller eliminado'); await cargar();
+        } else if (t.dataset.addMateria) {
+          const input = seccion.querySelector('.input-nueva-materia');
+          const select = seccion.querySelector('.select-taller');
+          const nombre = input.value.trim();
+          if (!nombre) { App.toast('Escribí el nombre de la materia'); return; }
+          await api('POST', '/materias', { nombre, anio: Number(t.dataset.addMateria), tallerId: select.value || null });
+          App.toast('Materia agregada'); await cargar();
+        } else if (t.dataset.addTaller) {
+          const input = seccion.querySelector('.input-nuevo-taller');
+          const nombre = input.value.trim();
+          if (!nombre) { App.toast('Escribí el nombre del taller'); return; }
+          await api('POST', '/talleres', { nombre, anio: Number(t.dataset.addTaller) });
+          App.toast('Taller creado'); await cargar();
+        } else if (t.dataset.addCurso) {
+          const input = seccion.querySelector('.input-nueva-division');
+          const division = input.value.trim();
+          if (!division) { App.toast('Escribí la división (ej: A)'); return; }
+          await api('POST', '/cursos', { anio: Number(t.dataset.addCurso), division });
+          App.toast('División agregada'); await cargar();
+        } else if (t.dataset.delCurso) {
+          await api('DELETE', `/cursos/${t.dataset.delCurso}`);
+          App.toast('División eliminada'); await cargar();
+        }
+      } catch (err) {
+        App.toast(err.message);
+      }
+    });
+
+    (async () => {
+      usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      puedeEditar = usuario.rol === 'secretaria' || usuario.rol === 'director';
+      if (puedeEditar) {
+        document.getElementById('subtitulo').textContent = 'Nivel Secundario · 5 años · podés gestionar divisiones y materias';
+      }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Códigos de aprobación</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1>Códigos de <span class="destello">aprobación</span></h1>
+          <p class="subtitulo" id="subtitulo">Cargando…</p>
+        </div>
+
+        <div class="mensaje-form" id="mensaje" role="alert"></div>
+
+        <div class="bloque-codigos" id="bloque" hidden>
+          <div class="generar-botones" id="generar"></div>
+
+          <div class="codigo-nuevo" id="codigo-nuevo" hidden>
+            <div>
+              <span class="etiqueta-nuevo">Nuevo código generado</span>
+              <span class="valor-nuevo" id="valor-nuevo"></span>
+            </div>
+            <button class="btn-mini" id="copiar-nuevo">Copiar</button>
+          </div>
+
+          <h2 class="titulo-lista">Códigos generados</h2>
+          <div class="lista-codigos" id="lista">
+            <p class="cargando">Cargando códigos…</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let usuario = null;
+
+    function fecha(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+
+    async function copiar(texto, boton) {
+      try {
+        await navigator.clipboard.writeText(texto);
+        App.toast('Código copiado');
+      } catch (e) {
+        App.toast('No se pudo copiar automáticamente');
+      }
+    }
+
+    function renderLista(codigos) {
+      const cont = document.getElementById('lista');
+      if (!codigos.length) {
+        cont.innerHTML = '<p class="cargando">Todavía no generaste ningún código.</p>';
+        return;
+      }
+      cont.innerHTML = codigos.map((c) => {
+        const rolNombre = (App.ROLES[c.rol_destino] || {}).nombre || c.rol_destino;
+        const estado = c.usado
+          ? '<span class="insignia insignia-proximamente">Usado</span>'
+          : '<span class="insignia insignia-activo">Disponible</span>';
+        const acciones = c.usado
+          ? ''
+          : `<button class="btn-mini" data-copiar="${c.codigo}">Copiar</button>
+             <button class="btn-mini peligro" data-revocar="${c.id}">Revocar</button>`;
+        return `
+          <div class="fila-codigo ${c.usado ? 'usada' : ''}">
+            <div class="fila-info">
+              <span class="codigo-valor">${c.codigo}</span>
+              <span class="codigo-meta">${rolNombre} · ${fecha(c.creado_en)}</span>
+            </div>
+            <div class="fila-acciones">${estado}${acciones}</div>
+          </div>`;
+      }).join('');
+
+      cont.querySelectorAll('[data-copiar]').forEach((b) =>
+        b.addEventListener('click', () => copiar(b.dataset.copiar, b)));
+      cont.querySelectorAll('[data-revocar]').forEach((b) =>
+        b.addEventListener('click', () => revocar(b.dataset.revocar)));
+    }
+
+    async function cargar() {
+      const token = App.obtenerToken();
+      const r = await fetch('/api/codigos', { headers: { Authorization: `Bearer ${token}` } });
+      const data = await r.json();
+      if (!r.ok || !data.ok) {
+        document.getElementById('subtitulo').textContent = data.error || 'No autorizado.';
+        return;
+      }
+
+      const subt = usuario.rol === 'director'
+        ? 'Generá códigos para que Secretaría pueda crear su cuenta.'
+        : 'Generá códigos para que Profesores y Preceptores puedan crear su cuenta.';
+      document.getElementById('subtitulo').textContent = subt;
+
+      const cont = document.getElementById('generar');
+      cont.innerHTML = data.puedeEmitir.map((rol) => {
+        const nombre = (App.ROLES[rol] || {}).nombre || rol;
+        return `<button class="boton boton-primario" data-generar="${rol}">+ Código de ${nombre}</button>`;
+      }).join('');
+      cont.querySelectorAll('[data-generar]').forEach((b) =>
+        b.addEventListener('click', () => generar(b.dataset.generar)));
+
+      document.getElementById('bloque').hidden = false;
+      renderLista(data.codigos);
+    }
+
+    async function generar(rolDestino) {
+      App.ocultarMensaje(document.getElementById('mensaje'));
+      const token = App.obtenerToken();
+      try {
+        const r = await fetch('/api/codigos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ rolDestino }),
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'No se pudo generar.');
+
+        const caja = document.getElementById('codigo-nuevo');
+        document.getElementById('valor-nuevo').textContent = data.codigo.codigo;
+        document.getElementById('copiar-nuevo').onclick = () => copiar(data.codigo.codigo);
+        caja.hidden = false;
+        await cargar();
+      } catch (error) {
+        App.mostrarMensaje(document.getElementById('mensaje'), error.message, 'error');
+      }
+    }
+
+    async function revocar(id) {
+      const token = App.obtenerToken();
+      try {
+        const r = await fetch(`/api/codigos/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'No se pudo revocar.');
+        App.toast('Código revocado');
+        await cargar();
+      } catch (error) {
+        App.mostrarMensaje(document.getElementById('mensaje'), error.message, 'error');
+      }
+    }
+
+    (async () => {
+      usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'director' && usuario.rol !== 'secretaria') {
+        document.getElementById('subtitulo').textContent = 'Tu rol no gestiona códigos de aprobación.';
+        return;
+      }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

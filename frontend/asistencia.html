@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Asistencia</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1><span class="destello">Asistencia</span></h1>
+          <p class="subtitulo" id="subtitulo">Elegí un curso y una fecha</p>
+        </div>
+
+        <div class="filtros-asistencia" id="filtros" hidden>
+          <select class="input-mini" id="curso"></select>
+          <input type="date" class="input-mini" id="fecha" />
+          <button class="boton boton-primario" id="btn-cargar" type="button">Cargar</button>
+        </div>
+
+        <div class="lista-usuarios" id="lista" style="margin-top:1.6rem;"></div>
+
+        <div id="acciones-guardar" hidden style="margin-top:1.4rem;">
+          <button class="boton boton-primario" id="btn-guardar" type="button">Guardar lista</button>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let estado = { cursos: [], materias: [], puedeTomar: false };
+    const ESTADOS = { presente: 'Presente', ausente: 'Ausente', retirado: 'Retirado' };
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    function hoyISO() { return new Date().toISOString().slice(0, 10); }
+
+    async function api(metodo, ruta, body) {
+      const token = App.obtenerToken();
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function badgeEstado(e) {
+      if (!e) return '<span class="codigo-meta">Sin marcar</span>';
+      const clase = { presente: 'insignia-activo', ausente: 'insignia-ausente', retirado: 'insignia-retirado' }[e.estado];
+      const extra = e.estado === 'retirado' && e.materia_id ? '' : (e.justificada ? ' · justificada' : '');
+      return `<span class="insignia ${clase}" style="position:static">${ESTADOS[e.estado]}${extra}</span>`;
+    }
+
+    function opcionesMateria(sel) {
+      return estado.materias.map((m) => `<option value="${m.id}" ${m.id === sel ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('');
+    }
+
+    function render(data) {
+      const cont = document.getElementById('lista');
+      estado.materias = data.materias;
+      estado.puedeTomar = data.puedeTomar;
+      document.getElementById('subtitulo').textContent =
+        `${data.curso.label} · ${data.alumnos.length} alumno${data.alumnos.length === 1 ? '' : 's'}`;
+
+      if (!data.alumnos.length) {
+        cont.innerHTML = '<p class="cargando">Este curso no tiene alumnos inscriptos todavía.</p>';
+        document.getElementById('acciones-guardar').hidden = true;
+        return;
+      }
+
+      cont.innerHTML = data.alumnos.map((a) => {
+        const est = a.asistencia ? a.asistencia.estado : 'presente';
+        const matSel = a.asistencia ? a.asistencia.materia_id : null;
+
+        const control = estado.puedeTomar ? `
+          <select class="input-mini select-estado">
+            <option value="presente" ${est === 'presente' ? 'selected' : ''}>Presente</option>
+            <option value="ausente" ${est === 'ausente' ? 'selected' : ''}>Ausente</option>
+            <option value="retirado" ${est === 'retirado' ? 'selected' : ''}>Retirado</option>
+          </select>
+          <select class="input-mini select-materia" ${est === 'retirado' ? '' : 'hidden'}>${opcionesMateria(matSel)}</select>
+          <a class="btn-mini" href="/asistencia-alumno.html?id=${a.id}">Ver</a>`
+          : `${badgeEstado(a.asistencia)}
+             <a class="btn-mini" href="/asistencia-alumno.html?id=${a.id}">Ver</a>`;
+
+        return `
+          <div class="fila-usuario" data-alumno="${a.id}">
+            <div class="fila-info">
+              <span class="usuario-nombre-lista">${esc(a.apellido)}, ${esc(a.nombre)}</span>
+            </div>
+            <div class="fila-acciones">${control}</div>
+          </div>`;
+      }).join('');
+
+      document.getElementById('acciones-guardar').hidden = !estado.puedeTomar;
+
+      // Mostrar/ocultar el select de materia según el estado.
+      cont.querySelectorAll('.select-estado').forEach((sel) => {
+        sel.addEventListener('change', () => {
+          const mat = sel.closest('.fila-acciones').querySelector('.select-materia');
+          mat.hidden = sel.value !== 'retirado';
+        });
+      });
+    }
+
+    async function cargar() {
+      const cursoId = document.getElementById('curso').value;
+      const fecha = document.getElementById('fecha').value;
+      if (!cursoId || !fecha) return;
+      try {
+        const data = await api('GET', `/api/asistencia/lista?cursoId=${cursoId}&fecha=${fecha}`);
+        render(data);
+      } catch (error) {
+        document.getElementById('lista').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    async function guardar() {
+      const cursoId = Number(document.getElementById('curso').value);
+      const fecha = document.getElementById('fecha').value;
+      const registros = [];
+      document.querySelectorAll('#lista .fila-usuario').forEach((fila) => {
+        const alumnoId = fila.dataset.alumno;
+        const est = fila.querySelector('.select-estado').value;
+        const matSel = fila.querySelector('.select-materia');
+        registros.push({ alumnoId, estado: est, materiaId: est === 'retirado' && matSel.value ? Number(matSel.value) : null });
+      });
+      try {
+        const data = await api('POST', '/api/asistencia/lista', { cursoId, fecha, registros });
+        App.toast(data.message);
+        await cargar();
+      } catch (error) {
+        App.toast(error.message);
+      }
+    }
+
+    document.getElementById('btn-cargar').addEventListener('click', cargar);
+    document.getElementById('btn-guardar').addEventListener('click', guardar);
+    document.getElementById('fecha').addEventListener('change', cargar);
+    document.getElementById('curso').addEventListener('change', cargar);
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (!['preceptor', 'secretaria', 'director'].includes(usuario.rol)) {
+        document.getElementById('lista').innerHTML = '<p class="cargando">Tu rol no gestiona la asistencia.</p>';
+        return;
+      }
+      // Cargar la lista de cursos.
+      try {
+        const est = await api('GET', '/api/academico/estructura');
+        estado.cursos = est.cursos || [];
+        document.getElementById('curso').innerHTML =
+          '<option value="">Elegí un curso…</option>' +
+          estado.cursos.map((c) => `<option value="${c.id}">${c.anio}.º ${c.division}</option>`).join('');
+        document.getElementById('fecha').value = hoyISO();
+        document.getElementById('filtros').hidden = false;
+      } catch (e) {
+        document.getElementById('lista').innerHTML = '<p class="cargando">No pudimos cargar los cursos.</p>';
+      }
+    })();
+  </script>
+</body>
+</html>

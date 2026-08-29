@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Mis hijos/as</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1>Mis <span class="destello">hijos/as</span></h1>
+          <p class="subtitulo" id="subtitulo">Vinculá a tus hijos con el documento (DNI) que cargaron en el instituto</p>
+        </div>
+
+        <!-- Agregar hijo por documento -->
+        <form class="tarjeta-form" id="form-agregar" hidden>
+          <h2 class="titulo-tarjeta">Agregar un hijo/a</h2>
+          <div class="campo">
+            <label for="documento">Documento (DNI) del alumno</label>
+            <input type="text" id="documento" placeholder="Ej: 45123678" required />
+            <p class="ayuda-campo">Es el DNI que el alumno (o la Secretaría) cargó en su cuenta.</p>
+          </div>
+          <div class="mensaje-form" id="mensaje" role="alert"></div>
+          <button type="submit" class="boton boton-primario" id="btn-agregar">Vincular</button>
+        </form>
+
+        <div class="lista-usuarios" id="lista">
+          <p class="cargando">Cargando…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    async function api(metodo, ruta, body) {
+      const token = App.obtenerToken();
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function render(hijos) {
+      const cont = document.getElementById('lista');
+      if (!hijos.length) {
+        cont.innerHTML = '<p class="cargando">Todavía no vinculaste a ningún hijo/a.</p>';
+        return;
+      }
+      cont.innerHTML = hijos.map((h) => `
+        <div class="fila-usuario">
+          <div class="fila-info">
+            <span class="usuario-nombre-lista">${esc(h.apellido)}, ${esc(h.nombre)}</span>
+            <span class="codigo-meta">${h.curso ? 'Curso: ' + esc(h.curso) : 'Sin curso asignado'}</span>
+          </div>
+          <div class="fila-acciones">
+            <a class="btn-mini" href="/asistencia-alumno.html?id=${h.id}">Ver asistencia</a>
+            <button class="btn-mini peligro" data-quitar="${h.id}">Quitar</button>
+          </div>
+        </div>`).join('');
+
+      cont.querySelectorAll('[data-quitar]').forEach((b) =>
+        b.addEventListener('click', () => quitar(b.dataset.quitar)));
+    }
+
+    async function cargar() {
+      try {
+        const data = await api('GET', '/api/familia/hijos');
+        document.getElementById('form-agregar').hidden = false;
+        render(data.hijos);
+      } catch (error) {
+        document.getElementById('lista').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    async function quitar(alumnoId) {
+      try {
+        await api('DELETE', `/api/familia/hijos/${alumnoId}`);
+        App.toast('Vínculo quitado');
+        await cargar();
+      } catch (error) {
+        App.toast(error.message);
+      }
+    }
+
+    document.getElementById('form-agregar').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const mensaje = document.getElementById('mensaje');
+      const btn = document.getElementById('btn-agregar');
+      App.ocultarMensaje(mensaje);
+
+      const documento = document.getElementById('documento').value.trim();
+      if (!documento) { App.mostrarMensaje(mensaje, 'Ingresá el documento del alumno.', 'error'); return; }
+
+      btn.disabled = true; btn.textContent = 'Vinculando…';
+      try {
+        const data = await api('POST', '/api/familia/hijos', { documento });
+        App.mostrarMensaje(mensaje, data.message, 'exito');
+        document.getElementById('documento').value = '';
+        await cargar();
+      } catch (error) {
+        App.mostrarMensaje(mensaje, error.message, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Vincular';
+      }
+    });
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'padre') {
+        document.getElementById('lista').innerHTML = '<p class="cargando">Esta sección es solo para padres/tutores.</p>';
+        return;
+      }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Mi perfil</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1>Mi <span class="destello">perfil</span></h1>
+          <div class="contexto-seleccion">
+            <span class="nivel-seleccionado" id="badge-rol"></span>
+            <span class="nivel-seleccionado rol" id="badge-nivel"></span>
+          </div>
+        </div>
+
+        <!-- Datos personales -->
+        <form class="tarjeta-form" id="form-datos">
+          <h2 class="titulo-tarjeta">Datos personales</h2>
+          <div class="fila-doble">
+            <div class="campo">
+              <label for="nombre">Nombre</label>
+              <input type="text" id="nombre" maxlength="60" required />
+            </div>
+            <div class="campo">
+              <label for="apellido">Apellido</label>
+              <input type="text" id="apellido" maxlength="60" required />
+            </div>
+          </div>
+          <div class="campo">
+            <label for="email">Email</label>
+            <input type="email" id="email" disabled />
+            <p class="ayuda-campo">El email no se puede modificar. Tu rol lo gestiona Dirección o Secretaría.</p>
+          </div>
+          <div class="mensaje-form" id="msg-datos" role="alert"></div>
+          <button type="submit" class="boton boton-primario" id="btn-datos">Guardar cambios</button>
+        </form>
+
+        <!-- Cambio de contraseña -->
+        <form class="tarjeta-form" id="form-pass">
+          <h2 class="titulo-tarjeta">Cambiar contraseña</h2>
+          <div class="campo">
+            <label for="actual">Contraseña actual</label>
+            <input type="password" id="actual" autocomplete="current-password" required />
+          </div>
+          <div class="fila-doble">
+            <div class="campo">
+              <label for="nueva">Nueva contraseña</label>
+              <input type="password" id="nueva" placeholder="Mínimo 8 caracteres" autocomplete="new-password" required />
+            </div>
+            <div class="campo">
+              <label for="repetir">Repetir nueva</label>
+              <input type="password" id="repetir" autocomplete="new-password" required />
+            </div>
+          </div>
+          <div class="mensaje-form" id="msg-pass" role="alert"></div>
+          <button type="submit" class="boton boton-primario" id="btn-pass">Cambiar contraseña</button>
+        </form>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let usuario = null;
+
+    async function api(metodo, ruta, body) {
+      const token = App.obtenerToken();
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    document.getElementById('form-datos').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('msg-datos');
+      const btn = document.getElementById('btn-datos');
+      App.ocultarMensaje(msg);
+
+      const nombre = document.getElementById('nombre').value.trim();
+      const apellido = document.getElementById('apellido').value.trim();
+      if (!nombre || !apellido) {
+        App.mostrarMensaje(msg, 'Completá tu nombre y apellido.', 'error');
+        return;
+      }
+
+      btn.disabled = true; btn.textContent = 'Guardando…';
+      try {
+        const data = await api('PATCH', '/api/auth/perfil', { nombre, apellido });
+        App.mostrarMensaje(msg, data.message, 'exito');
+        App.toast('Datos actualizados');
+        // Refrescar el usuario guardado en el navegador
+        localStorage.setItem('iu_usuario', JSON.stringify(data.usuario));
+      } catch (error) {
+        App.mostrarMensaje(msg, error.message, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Guardar cambios';
+      }
+    });
+
+    document.getElementById('form-pass').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('msg-pass');
+      const btn = document.getElementById('btn-pass');
+      App.ocultarMensaje(msg);
+
+      const actual = document.getElementById('actual').value;
+      const nueva = document.getElementById('nueva').value;
+      const repetir = document.getElementById('repetir').value;
+
+      if (!actual || !nueva) { App.mostrarMensaje(msg, 'Completá todos los campos.', 'error'); return; }
+      if (nueva.length < 8) { App.mostrarMensaje(msg, 'La nueva contraseña debe tener al menos 8 caracteres.', 'error'); return; }
+      if (nueva !== repetir) { App.mostrarMensaje(msg, 'Las contraseñas nuevas no coinciden.', 'error'); return; }
+
+      btn.disabled = true; btn.textContent = 'Cambiando…';
+      try {
+        const data = await api('POST', '/api/auth/cambiar-password', { actual, nueva });
+        App.mostrarMensaje(msg, data.message, 'exito');
+        App.toast('Contraseña actualizada');
+        document.getElementById('form-pass').reset();
+      } catch (error) {
+        App.mostrarMensaje(msg, error.message, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Cambiar contraseña';
+      }
+    });
+
+    (async () => {
+      usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      document.getElementById('nombre').value = usuario.nombre || '';
+      document.getElementById('apellido').value = usuario.apellido || '';
+      document.getElementById('email').value = usuario.email || '';
+      document.getElementById('badge-rol').textContent = (App.ROLES[usuario.rol] || {}).nombre || usuario.rol;
+      document.getElementById('badge-nivel').textContent = (App.NIVELES[usuario.nivel] || {}).nombre || usuario.nivel;
+    })();
+  </script>
+</body>
+</html>

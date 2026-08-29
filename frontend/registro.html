@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Crear cuenta</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/" class="marca"><img src="/assets/logo.svg" alt="Instituto Universe" /></a>
+      <a href="/login.html" class="enlace-volver">← Volver al login</a>
+    </header>
+
+    <main>
+      <div class="panel-form aparecer">
+        <div class="encabezado-form">
+          <img src="/assets/isotipo.svg" alt="" />
+          <h1>Crear cuenta</h1>
+          <div class="contexto-seleccion">
+            <span class="nivel-seleccionado" id="etiqueta-nivel"></span>
+            <span class="nivel-seleccionado rol" id="etiqueta-rol"></span>
+          </div>
+        </div>
+
+        <div class="mensaje-form" id="mensaje" role="alert"></div>
+
+        <!-- Aviso para el rol Director (no tiene autorregistro) -->
+        <div class="aviso-director" id="aviso-director" hidden>
+          <p>Las cuentas de <strong>Dirección</strong> las crea la administración del instituto,
+          no se registran desde aquí.</p>
+          <p>Si ya tenés tu cuenta, <a href="/login.html">iniciá sesión</a>.</p>
+        </div>
+
+        <form id="form-registro" novalidate>
+          <div class="fila-doble">
+            <div class="campo">
+              <label for="nombre">Nombre</label>
+              <input type="text" id="nombre" name="nombre" placeholder="María" autocomplete="given-name" required />
+            </div>
+            <div class="campo">
+              <label for="apellido">Apellido</label>
+              <input type="text" id="apellido" name="apellido" placeholder="González" autocomplete="family-name" required />
+            </div>
+          </div>
+          <div class="campo">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" placeholder="tu@email.com" autocomplete="email" required />
+          </div>
+
+          <!-- Documento (DNI) — solo para alumnos -->
+          <div class="campo" id="campo-documento" hidden>
+            <label for="documento">Documento (DNI)</label>
+            <input type="text" id="documento" name="documento" placeholder="Ej: 45123678" autocomplete="off" />
+            <p class="ayuda-campo">Tu familia usará este documento para vincularse a tu cuenta.</p>
+          </div>
+
+          <!-- Código de aprobación (solo para roles del personal) -->
+          <div class="campo" id="campo-codigo" hidden>
+            <label for="codigo" id="label-codigo">Código de aprobación</label>
+            <input type="text" id="codigo" name="codigo" placeholder="Código de aprobación" autocomplete="off" />
+            <p class="ayuda-campo" id="ayuda-codigo"></p>
+          </div>
+
+          <div class="campo">
+            <label for="password">Contraseña</label>
+            <input type="password" id="password" name="password" placeholder="Mínimo 8 caracteres" autocomplete="new-password" required minlength="8" />
+          </div>
+          <div class="campo">
+            <label for="confirmar">Confirmar contraseña</label>
+            <input type="password" id="confirmar" name="confirmar" placeholder="Repite tu contraseña" autocomplete="new-password" required />
+          </div>
+          <button type="submit" class="boton boton-primario" id="boton-registro">Crear mi cuenta</button>
+        </form>
+
+        <p class="alternar-auth">¿Ya tienes cuenta? <a href="/login.html">Inicia sesión</a></p>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const seleccion = App.exigirSeleccion();
+
+    if (seleccion) {
+      const rolInfo = App.ROLES[seleccion.rol];
+      document.getElementById('etiqueta-nivel').textContent = App.NIVELES[seleccion.nivel].nombre;
+      document.getElementById('etiqueta-rol').textContent = rolInfo.nombre;
+
+      const form = document.getElementById('form-registro');
+      const mensaje = document.getElementById('mensaje');
+      const boton = document.getElementById('boton-registro');
+      const campoCodigo = document.getElementById('campo-codigo');
+      const inputCodigo = document.getElementById('codigo');
+      const campoDocumento = document.getElementById('campo-documento');
+      const inputDocumento = document.getElementById('documento');
+
+      if (seleccion.rol === 'alumno') {
+        campoDocumento.hidden = false;
+        inputDocumento.required = true;
+      }
+
+      if (!rolInfo.registroLibre) {
+        // Rol Director: sin autorregistro
+        form.hidden = true;
+        document.getElementById('aviso-director').hidden = false;
+      } else if (rolInfo.codigo) {
+        // Roles del personal que requieren código de aprobación
+        const emisor = App.EMISOR_CODIGO[rolInfo.codigo];
+        campoCodigo.hidden = false;
+        inputCodigo.required = true;
+        document.getElementById('label-codigo').textContent = `Código de aprobación de ${emisor}`;
+        inputCodigo.placeholder = `Código entregado por ${emisor}`;
+        document.getElementById('ayuda-codigo').textContent =
+          `El rol de ${rolInfo.nombre} requiere un código emitido por ${emisor} para poder crear la cuenta.`;
+      }
+
+      form.addEventListener('submit', async (evento) => {
+        evento.preventDefault();
+        App.ocultarMensaje(mensaje);
+
+        const datos = {
+          nombre: form.nombre.value.trim(),
+          apellido: form.apellido.value.trim(),
+          email: form.email.value.trim(),
+          password: form.password.value,
+          rol: seleccion.rol,
+          nivel: seleccion.nivel,
+        };
+        if (rolInfo.codigo) {
+          datos.codigo = inputCodigo.value.trim();
+        }
+        if (seleccion.rol === 'alumno') {
+          datos.documento = inputDocumento.value.trim();
+        }
+
+        if (!datos.nombre || !datos.apellido || !datos.email || !datos.password) {
+          App.mostrarMensaje(mensaje, 'Completa todos los campos para crear tu cuenta.', 'error');
+          return;
+        }
+        if (seleccion.rol === 'alumno' && !datos.documento) {
+          App.mostrarMensaje(mensaje, 'Ingresá tu documento (DNI).', 'error');
+          return;
+        }
+        if (rolInfo.codigo && !datos.codigo) {
+          App.mostrarMensaje(mensaje, 'Ingresá el código de aprobación para este rol.', 'error');
+          return;
+        }
+        if (datos.password.length < 8) {
+          App.mostrarMensaje(mensaje, 'La contraseña debe tener al menos 8 caracteres.', 'error');
+          return;
+        }
+        if (datos.password !== form.confirmar.value) {
+          App.mostrarMensaje(mensaje, 'Las contraseñas no coinciden.', 'error');
+          return;
+        }
+
+        boton.disabled = true;
+        boton.textContent = 'Creando cuenta…';
+        try {
+          const respuesta = await App.post('/api/auth/register', datos);
+          App.mostrarMensaje(mensaje, respuesta.message, 'exito');
+          form.reset();
+        } catch (error) {
+          App.mostrarMensaje(mensaje, error.message, 'error');
+        } finally {
+          boton.disabled = false;
+          boton.textContent = 'Crear mi cuenta';
+        }
+      });
+    }
+  </script>
+</body>
+</html>

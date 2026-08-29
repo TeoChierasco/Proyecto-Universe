@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 130" role="img" aria-label="Instituto Universe">
+  <defs>
+    <linearGradient id="circO" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#b6e05c"/>
+      <stop offset="100%" stop-color="#7cb518"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Isotipo: círculo verde con "UV" -->
+  <circle cx="63" cy="65" r="58" fill="url(#circO)"/>
+  <text x="55" y="86" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif"
+        font-weight="800" font-size="60" fill="#10170d" letter-spacing="-2">UV</text>
+
+  <!-- Wordmark: universe (claro, para fondo oscuro) -->
+  <text x="135" y="88" font-family="'Segoe UI', Arial, sans-serif" font-size="60" letter-spacing="-2">
+    <tspan font-weight="800" fill="#e9f0e1">uni</tspan><tspan font-weight="400" fill="#9aa891">verse</tspan>
+  </text>
+</svg>

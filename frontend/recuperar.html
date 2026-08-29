@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Recuperar contraseña</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/" class="marca"><img src="/assets/logo.svg" alt="Instituto Universe" /></a>
+      <a href="/login.html" class="enlace-volver">← Volver al login</a>
+    </header>
+
+    <main>
+      <div class="panel-form aparecer">
+        <div class="encabezado-form">
+          <img src="/assets/isotipo.svg" alt="" />
+          <h1 id="titulo">Recuperar contraseña</h1>
+        </div>
+
+        <div class="mensaje-form" id="mensaje" role="alert"></div>
+
+        <!-- Modo 1: pedir el enlace por email -->
+        <form id="form-solicitar">
+          <p class="subtitulo" style="margin: 0 0 1.4rem; font-size: 0.95rem; text-align: left;">
+            Ingresá tu email y te enviaremos un enlace para crear una nueva contraseña.
+          </p>
+          <div class="campo">
+            <label for="email">Email</label>
+            <input type="email" id="email" placeholder="tu@email.com" autocomplete="email" required />
+          </div>
+          <button type="submit" class="boton boton-primario" id="btn-solicitar">Enviar enlace</button>
+        </form>
+
+        <!-- Modo 2: fijar la nueva contraseña (tras entrar por el enlace) -->
+        <form id="form-restablecer" hidden>
+          <p class="subtitulo" style="margin: 0 0 1.4rem; font-size: 0.95rem; text-align: left;">
+            Ingresá tu nueva contraseña.
+          </p>
+          <div class="campo">
+            <label for="nueva">Nueva contraseña</label>
+            <input type="password" id="nueva" placeholder="Mínimo 8 caracteres" autocomplete="new-password" required />
+          </div>
+          <div class="campo">
+            <label for="repetir">Repetir contraseña</label>
+            <input type="password" id="repetir" autocomplete="new-password" required />
+          </div>
+          <button type="submit" class="boton boton-primario" id="btn-restablecer">Guardar contraseña</button>
+        </form>
+
+        <p class="alternar-auth" id="pie-login">¿Ya la recordaste? <a href="/login.html">Iniciar sesión</a></p>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const mensaje = document.getElementById('mensaje');
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const tokenRecuperacion = hash.get('access_token');
+    const tipo = hash.get('type');
+    const errorEnlace = hash.get('error_description');
+
+    // Limpiar el hash de la URL (no dejar el token a la vista).
+    if (window.location.hash) history.replaceState(null, '', window.location.pathname);
+
+    // ----- Modo restablecer (llegó desde el email) -----
+    if (tokenRecuperacion && tipo === 'recovery') {
+      document.getElementById('form-solicitar').hidden = true;
+      document.getElementById('form-restablecer').hidden = false;
+      document.getElementById('titulo').textContent = 'Nueva contraseña';
+      App.montarOjos(document.getElementById('form-restablecer'));
+
+      document.getElementById('form-restablecer').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        App.ocultarMensaje(mensaje);
+        const nueva = document.getElementById('nueva').value;
+        const repetir = document.getElementById('repetir').value;
+        const btn = document.getElementById('btn-restablecer');
+
+        if (nueva.length < 8) { App.mostrarMensaje(mensaje, 'La contraseña debe tener al menos 8 caracteres.', 'error'); return; }
+        if (nueva !== repetir) { App.mostrarMensaje(mensaje, 'Las contraseñas no coinciden.', 'error'); return; }
+
+        btn.disabled = true; btn.textContent = 'Guardando…';
+        try {
+          const respuesta = await App.post('/api/auth/restablecer-password', { token: tokenRecuperacion, nueva });
+          document.getElementById('form-restablecer').hidden = true;
+          document.getElementById('pie-login').hidden = true;
+          App.mostrarMensaje(mensaje, respuesta.message + ' Redirigiendo al login…', 'exito');
+          setTimeout(() => { window.location.href = '/login.html'; }, 2500);
+        } catch (error) {
+          App.mostrarMensaje(mensaje, error.message, 'error');
+          btn.disabled = false; btn.textContent = 'Guardar contraseña';
+        }
+      });
+
+    // ----- Enlace vencido/erróneo -----
+    } else if (errorEnlace) {
+      App.mostrarMensaje(mensaje, 'El enlace es inválido o venció. Pedí uno nuevo.', 'error');
+    }
+
+    // ----- Modo solicitar (siempre disponible si no hay token) -----
+    document.getElementById('form-solicitar').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      App.ocultarMensaje(mensaje);
+      const email = document.getElementById('email').value.trim();
+      const btn = document.getElementById('btn-solicitar');
+      if (!email) { App.mostrarMensaje(mensaje, 'Ingresá tu email.', 'error'); return; }
+
+      btn.disabled = true; btn.textContent = 'Enviando…';
+      try {
+        const respuesta = await App.post('/api/auth/recuperar', { email });
+        App.mostrarMensaje(mensaje, respuesta.message, 'exito');
+        e.target.reset();
+      } catch (error) {
+        App.mostrarMensaje(mensaje, error.message, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Enviar enlace';
+      }
+    });
+  </script>
+</body>
+</html>

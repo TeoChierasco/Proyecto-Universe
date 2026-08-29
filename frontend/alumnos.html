@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Alumnos</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1><span class="destello">Alumnos</span></h1>
+          <p class="subtitulo" id="subtitulo">Altas de alumnos e inscripción a cursos</p>
+        </div>
+
+        <!-- Crear cuenta de alumno -->
+        <form class="tarjeta-form" id="form-crear" hidden>
+          <h2 class="titulo-tarjeta">Crear cuenta de alumno</h2>
+          <div class="fila-doble">
+            <div class="campo">
+              <label for="nombre">Nombre</label>
+              <input type="text" id="nombre" maxlength="60" required />
+            </div>
+            <div class="campo">
+              <label for="apellido">Apellido</label>
+              <input type="text" id="apellido" maxlength="60" required />
+            </div>
+          </div>
+          <div class="fila-doble">
+            <div class="campo">
+              <label for="email">Email</label>
+              <input type="email" id="email" placeholder="alumno@email.com" required />
+            </div>
+            <div class="campo">
+              <label for="documento">Documento (DNI)</label>
+              <input type="text" id="documento" placeholder="Ej: 45123678" required />
+            </div>
+          </div>
+          <div class="campo">
+            <label for="curso-nuevo">Curso (opcional)</label>
+            <select id="curso-nuevo"></select>
+          </div>
+
+          <div class="codigo-nuevo" id="temp-box" hidden>
+            <div>
+              <span class="etiqueta-nuevo">Contraseña temporal</span>
+              <span class="valor-nuevo" id="temp-valor"></span>
+            </div>
+            <button class="btn-mini" id="temp-copiar" type="button">Copiar</button>
+          </div>
+
+          <div class="mensaje-form" id="mensaje" role="alert"></div>
+          <button type="submit" class="boton boton-primario" id="btn-crear">Crear alumno</button>
+        </form>
+
+        <div class="barra-busqueda" id="barra" hidden>
+          <input type="text" class="input-mini" id="buscar" placeholder="Buscar por nombre, email o curso…" />
+        </div>
+
+        <div class="lista-usuarios" id="lista">
+          <p class="cargando">Cargando alumnos…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let estado = { alumnos: [], cursos: [] };
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    function cursoLabel(c) { return `${c.anio}.º ${c.division}`; }
+
+    function opcionesCurso(seleccionado) {
+      return ['<option value="">Sin curso</option>']
+        .concat(estado.cursos.map((c) => `<option value="${c.id}" ${c.id === seleccionado ? 'selected' : ''}>${cursoLabel(c)}</option>`))
+        .join('');
+    }
+
+    async function api(metodo, ruta, body) {
+      const token = App.obtenerToken();
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function renderLista() {
+      const filtro = (document.getElementById('buscar').value || '').toLowerCase().trim();
+      const cont = document.getElementById('lista');
+
+      const visibles = estado.alumnos.filter((a) => {
+        if (!filtro) return true;
+        const curso = estado.cursos.find((c) => c.id === a.cursoId);
+        const txt = `${a.nombre} ${a.apellido} ${a.email} ${curso ? cursoLabel(curso) : ''}`.toLowerCase();
+        return txt.includes(filtro);
+      });
+
+      if (!visibles.length) {
+        cont.innerHTML = '<p class="cargando">No hay alumnos todavía.</p>';
+        return;
+      }
+
+      cont.innerHTML = visibles.map((a) => `
+        <div class="fila-usuario">
+          <div class="fila-info">
+            <span class="usuario-nombre-lista">${esc(a.apellido)}, ${esc(a.nombre)}</span>
+            <span class="codigo-meta">${esc(a.email)} · DNI ${esc(a.documento || '—')}</span>
+          </div>
+          <div class="fila-acciones">
+            <select class="input-mini select-rol" data-curso-de="${a.id}">${opcionesCurso(a.cursoId)}</select>
+          </div>
+        </div>`).join('');
+
+      cont.querySelectorAll('[data-curso-de]').forEach((s) =>
+        s.addEventListener('change', () => asignarCurso(s.dataset.cursoDe, s.value)));
+    }
+
+    async function cargar() {
+      try {
+        const data = await api('GET', '/api/alumnos');
+        estado.alumnos = data.alumnos;
+        estado.cursos = data.cursos;
+        document.getElementById('form-crear').hidden = false;
+        document.getElementById('barra').hidden = false;
+        document.getElementById('curso-nuevo').innerHTML = opcionesCurso(null);
+        document.getElementById('subtitulo').textContent =
+          `${data.alumnos.length} alumno${data.alumnos.length === 1 ? '' : 's'} · asigná cada uno a un curso`;
+        renderLista();
+      } catch (error) {
+        document.getElementById('lista').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    async function asignarCurso(alumnoId, valor) {
+      try {
+        await api('PATCH', `/api/alumnos/${alumnoId}/curso`, { cursoId: valor ? Number(valor) : null });
+        App.toast('Curso actualizado');
+        const a = estado.alumnos.find((x) => x.id === alumnoId);
+        if (a) a.cursoId = valor ? Number(valor) : null;
+      } catch (error) {
+        App.toast(error.message);
+        await cargar();
+      }
+    }
+
+    document.getElementById('form-crear').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const mensaje = document.getElementById('mensaje');
+      const btn = document.getElementById('btn-crear');
+      App.ocultarMensaje(mensaje);
+
+      const body = {
+        nombre: document.getElementById('nombre').value.trim(),
+        apellido: document.getElementById('apellido').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        documento: document.getElementById('documento').value.trim(),
+        cursoId: document.getElementById('curso-nuevo').value ? Number(document.getElementById('curso-nuevo').value) : null,
+      };
+      if (!body.nombre || !body.apellido || !body.email || !body.documento) {
+        App.mostrarMensaje(mensaje, 'Completá nombre, apellido, email y documento.', 'error');
+        return;
+      }
+
+      btn.disabled = true; btn.textContent = 'Creando…';
+      try {
+        const data = await api('POST', '/api/alumnos', body);
+        document.getElementById('temp-valor').textContent = data.passwordTemporal;
+        document.getElementById('temp-copiar').onclick = async () => {
+          try { await navigator.clipboard.writeText(data.passwordTemporal); App.toast('Contraseña copiada'); } catch (e) {}
+        };
+        document.getElementById('temp-box').hidden = false;
+        App.mostrarMensaje(mensaje, data.message + ' Anotá la contraseña temporal y entregásela al alumno (la puede cambiar después).', 'exito');
+        document.getElementById('nombre').value = '';
+        document.getElementById('apellido').value = '';
+        document.getElementById('email').value = '';
+        document.getElementById('documento').value = '';
+        await cargar();
+      } catch (error) {
+        App.mostrarMensaje(mensaje, error.message, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Crear alumno';
+      }
+    });
+
+    document.getElementById('buscar').addEventListener('input', renderLista);
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'secretaria' && usuario.rol !== 'director') {
+        document.getElementById('lista').innerHTML = '<p class="cargando">Tu rol no gestiona alumnos.</p>';
+        return;
+      }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

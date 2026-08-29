@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Asistencia del alumno</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="#" class="enlace-volver" id="volver">← Volver</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1 id="titulo">Asistencia</h1>
+          <p class="subtitulo" id="subtitulo"></p>
+        </div>
+
+        <div id="contenido" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+          <p class="cargando">Cargando…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const ESTADOS = { presente: 'Presente', ausente: 'Ausente', retirado: 'Retirado' };
+    const params = new URLSearchParams(location.search);
+    let alumnoIdParam = params.get('id');
+    let permisos = {};
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    function fechaCorta(iso) {
+      const [y, m, d] = iso.split('-');
+      return `${d}/${m}/${y}`;
+    }
+    function fechaHora(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+        ' · ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    async function api(metodo, ruta, body) {
+      const token = App.obtenerToken();
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function filaHistorial(h) {
+      const clase = { presente: 'insignia-activo', ausente: 'insignia-ausente', retirado: 'insignia-retirado' }[h.estado];
+      const materia = h.estado === 'retirado' && h.materia ? ` · ${esc(h.materia)}` : '';
+      const justif = h.justificada ? '<span class="chip-justif">Justificada</span>' : '';
+      const obs = h.observacion ? `<span class="codigo-meta">${esc(h.observacion)}</span>` : '';
+      let accion = '';
+      if (permisos.justificar && (h.estado === 'ausente' || h.estado === 'retirado')) {
+        accion = h.justificada
+          ? `<button class="btn-mini" data-just="${h.id}" data-val="0">Quitar justif.</button>`
+          : `<button class="btn-mini" data-just="${h.id}" data-val="1">Justificar</button>`;
+      }
+      return `
+        <div class="fila-usuario">
+          <div class="fila-info">
+            <span class="usuario-nombre-lista">${fechaCorta(h.fecha)}
+              <span class="insignia ${clase}" style="position:static; margin-left:.4rem;">${ESTADOS[h.estado]}${materia}</span> ${justif}
+            </span>
+            ${obs}
+          </div>
+          <div class="fila-acciones">${accion}</div>
+        </div>`;
+    }
+
+    function render(data) {
+      const a = data.alumno;
+      permisos = data.permisos;
+      document.getElementById('titulo').innerHTML = `${esc(a.apellido)}, <span class="destello">${esc(a.nombre)}</span>`;
+      document.getElementById('subtitulo').textContent =
+        `${a.curso ? a.curso + ' · ' : ''}DNI ${esc(a.documento || '—')}`;
+
+      const ausentes = data.historial.filter((h) => h.estado === 'ausente');
+      const justificadas = ausentes.filter((h) => h.justificada).length;
+      const retiros = data.historial.filter((h) => h.estado === 'retirado').length;
+
+      const cont = document.getElementById('contenido');
+      cont.innerHTML = `
+        <div class="contadores">
+          <div class="contador"><span class="num">${ausentes.length}</span><span class="cap">Ausencias</span></div>
+          <div class="contador"><span class="num">${justificadas}</span><span class="cap">Justificadas</span></div>
+          <div class="contador"><span class="num">${retiros}</span><span class="cap">Retiros</span></div>
+        </div>
+
+        ${permisos.avisar ? `
+        <form class="tarjeta-form" id="form-aviso" style="max-width:640px;">
+          <h2 class="titulo-tarjeta">Enviar aviso a la familia</h2>
+          <div class="campo">
+            <textarea id="aviso-msg" rows="3" maxlength="500" placeholder="Ej: Su hijo/a acumula 5 inasistencias. Por favor comunicarse con el instituto."></textarea>
+          </div>
+          <div class="mensaje-form" id="msg-aviso"></div>
+          <button type="submit" class="boton boton-primario" id="btn-aviso">Enviar aviso</button>
+        </form>` : ''}
+
+        ${data.avisos.length ? `
+          <h2 class="titulo-lista" style="max-width:640px; width:100%;">Avisos enviados a la familia</h2>
+          <div class="lista-usuarios" style="max-width:640px;">
+            ${data.avisos.map((v) => `
+              <div class="comunicado" style="width:100%;">
+                <p class="com-cuerpo">${esc(v.mensaje)}</p>
+                <div class="com-foot"><span class="com-autor">${esc(v.emitido_nombre || '')} · ${esc(v.emitido_rol || '')} · ${fechaHora(v.creado_en)}</span></div>
+              </div>`).join('')}
+          </div>` : ''}
+
+        <h2 class="titulo-lista" style="max-width:640px; width:100%;">Historial</h2>
+        <div class="lista-usuarios" id="historial" style="max-width:640px;">
+          ${data.historial.length ? data.historial.map(filaHistorial).join('') : '<p class="cargando">Sin registros de asistencia todavía.</p>'}
+        </div>`;
+
+      // Justificar / quitar justificación (preceptor)
+      cont.querySelectorAll('[data-just]').forEach((b) =>
+        b.addEventListener('click', () => justificar(b.dataset.just, b.dataset.val === '1')));
+
+      // Enviar aviso
+      const formAviso = document.getElementById('form-aviso');
+      if (formAviso) {
+        formAviso.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const msgBox = document.getElementById('msg-aviso');
+          const mensaje = document.getElementById('aviso-msg').value.trim();
+          App.ocultarMensaje(msgBox);
+          if (!mensaje) { App.mostrarMensaje(msgBox, 'Escribí el mensaje del aviso.', 'error'); return; }
+          try {
+            const r = await api('POST', '/api/asistencia/aviso', { alumnoId: alumnoIdReal, mensaje });
+            App.toast(r.message);
+            await cargar();
+          } catch (error) {
+            App.mostrarMensaje(msgBox, error.message, 'error');
+          }
+        });
+      }
+    }
+
+    async function justificar(id, valor) {
+      let observacion = '';
+      if (valor) {
+        observacion = window.prompt('Motivo / certificado (opcional):', '') || '';
+      }
+      try {
+        const r = await api('PATCH', `/api/asistencia/${id}/justificar`, { justificada: valor, observacion });
+        App.toast(r.message);
+        await cargar();
+      } catch (error) {
+        App.toast(error.message);
+      }
+    }
+
+    let alumnoIdReal = null;
+    async function cargar() {
+      try {
+        const data = await api('GET', `/api/asistencia/alumno/${alumnoIdParam}`);
+        render(data);
+      } catch (error) {
+        document.getElementById('contenido').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+
+      // El alumno ve su propia asistencia; los padres vienen con ?id.
+      if (!alumnoIdParam) {
+        if (usuario.rol === 'alumno') alumnoIdParam = 'mi';
+        else { document.getElementById('contenido').innerHTML = '<p class="cargando">Falta indicar el alumno.</p>'; return; }
+      }
+      alumnoIdReal = alumnoIdParam === 'mi' ? usuario.id : alumnoIdParam;
+
+      // Botón volver: al panel o a la lista según el rol.
+      document.getElementById('volver').setAttribute('href',
+        (usuario.rol === 'preceptor' || usuario.rol === 'secretaria' || usuario.rol === 'director') ? '/asistencia.html'
+          : (usuario.rol === 'padre' ? '/hijos.html' : '/panel.html'));
+
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

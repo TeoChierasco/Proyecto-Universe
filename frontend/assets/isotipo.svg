@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Universe">
+  <defs>
+    <linearGradient id="circ" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9ccf3f"/>
+      <stop offset="100%" stop-color="#6fa617"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="58" fill="url(#circ)"/>
+  <text x="52" y="82" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif"
+        font-weight="800" font-size="58" fill="#ffffff" letter-spacing="-2">UV</text>
+</svg>

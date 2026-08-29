@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Nivel y rol</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/" class="marca"><img src="/assets/logo.svg" alt="Instituto Universe" /></a>
+      <a href="/" class="enlace-volver">← Volver al inicio</a>
+    </header>
+
+    <main>
+      <div class="aparecer">
+        <h1>Ingresar a la <span class="destello">plataforma</span></h1>
+        <p class="subtitulo">Contanos a qué nivel pertenecés y cuál es tu rol para continuar.</p>
+
+        <!-- Paso 1: nivel -->
+        <section class="seccion-selector">
+          <h2 class="titulo-seccion"><span class="paso">1</span> ¿A qué nivel pertenecés?</h2>
+          <div class="tarjetas-nivel">
+            <button type="button" class="tarjeta-nivel proximamente" data-nivel="primario">
+              <span class="insignia insignia-proximamente">Próximamente</span>
+              <span class="icono" data-ico="book"></span>
+              <h2>Nivel Primario</h2>
+              <p>De 1.º a 7.º grado.</p>
+            </button>
+
+            <button type="button" class="tarjeta-nivel" data-nivel="secundario">
+              <span class="insignia insignia-activo">Disponible</span>
+              <span class="icono" data-ico="cap"></span>
+              <h2>Nivel Secundario</h2>
+              <p>De 1.º a 6.º año.</p>
+            </button>
+
+            <button type="button" class="tarjeta-nivel proximamente" data-nivel="terciario">
+              <span class="insignia insignia-proximamente">Próximamente</span>
+              <span class="icono" data-ico="building"></span>
+              <h2>Nivel Terciario</h2>
+              <p>Carreras y tecnicaturas.</p>
+            </button>
+          </div>
+        </section>
+
+        <!-- Paso 2: rol -->
+        <section class="seccion-selector">
+          <h2 class="titulo-seccion"><span class="paso">2</span> ¿Cuál es tu rol?</h2>
+          <div class="opciones-rol">
+            <button type="button" class="opcion-rol" data-rol="alumno"><span class="icono" data-ico="cap"></span> Alumno/a</button>
+            <button type="button" class="opcion-rol" data-rol="padre"><span class="icono" data-ico="users"></span> Padre / Tutor</button>
+            <button type="button" class="opcion-rol" data-rol="profesor"><span class="icono" data-ico="book"></span> Profesor/a</button>
+            <button type="button" class="opcion-rol" data-rol="preceptor"><span class="icono" data-ico="clipboard"></span> Preceptor/a</button>
+            <button type="button" class="opcion-rol" data-rol="secretaria"><span class="icono" data-ico="briefcase"></span> Secretaría</button>
+            <button type="button" class="opcion-rol" data-rol="director"><span class="icono" data-ico="building"></span> Director/a</button>
+          </div>
+        </section>
+
+        <div class="acciones-selector">
+          <button type="button" class="boton boton-primario" id="continuar" disabled>Continuar</button>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let nivelSel = null;
+    let rolSel = null;
+    const btnContinuar = document.getElementById('continuar');
+
+    function actualizarBoton() {
+      btnContinuar.disabled = !(nivelSel && App.NIVELES[nivelSel].activo && rolSel);
+    }
+
+    document.querySelectorAll('.tarjeta-nivel').forEach((tarjeta) => {
+      tarjeta.addEventListener('click', () => {
+        const nivel = tarjeta.dataset.nivel;
+        if (!App.NIVELES[nivel].activo) {
+          App.toast(`${App.NIVELES[nivel].nombre} estará disponible próximamente.`);
+          return;
+        }
+        document.querySelectorAll('.tarjeta-nivel').forEach((t) => t.classList.remove('seleccionado'));
+        tarjeta.classList.add('seleccionado');
+        nivelSel = nivel;
+        actualizarBoton();
+      });
+    });
+
+    document.querySelectorAll('.opcion-rol').forEach((opcion) => {
+      opcion.addEventListener('click', () => {
+        document.querySelectorAll('.opcion-rol').forEach((o) => o.classList.remove('seleccionado'));
+        opcion.classList.add('seleccionado');
+        rolSel = opcion.dataset.rol;
+        actualizarBoton();
+      });
+    });
+
+    btnContinuar.addEventListener('click', () => {
+      if (btnContinuar.disabled) return;
+      App.guardarNivel(nivelSel);
+      App.guardarRol(rolSel);
+      window.location.href = '/login.html';
+    });
+  </script>
+</body>
+</html>

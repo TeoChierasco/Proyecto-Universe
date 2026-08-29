@@ -1,0 +1,21 @@
+{
+  "name": "instituto-universe",
+  "version": "0.1.0",
+  "description": "Plataforma web universal del Instituto Universe — gestión y comunicación para toda la comunidad educativa",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js"
+  },
+  "keywords": [
+    "educacion",
+    "instituto",
+    "gestion-escolar"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
+  }
+}

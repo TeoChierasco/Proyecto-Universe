@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Comunicados</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1><span class="destello">Comunicados</span></h1>
+          <p class="subtitulo" id="subtitulo">Avisos de la comunidad educativa</p>
+        </div>
+
+        <!-- Formulario de publicación (solo publicadores) -->
+        <form class="publicar-form" id="publicar" hidden>
+          <div class="campo">
+            <label for="titulo">Título</label>
+            <input type="text" id="titulo" maxlength="120" placeholder="Ej: Reunión de padres" required />
+          </div>
+          <div class="campo">
+            <label for="cuerpo">Mensaje</label>
+            <textarea id="cuerpo" rows="4" maxlength="2000" placeholder="Escribí el comunicado…" required></textarea>
+          </div>
+          <div class="campo">
+            <label for="audiencia">Dirigido a</label>
+            <select id="audiencia">
+              <option value="todos">Toda la comunidad</option>
+              <option value="alumnos">Alumnos</option>
+              <option value="familias">Familias</option>
+              <option value="docentes">Docentes</option>
+            </select>
+          </div>
+          <div class="mensaje-form" id="mensaje" role="alert"></div>
+          <button type="submit" class="boton boton-primario" id="boton-publicar">Publicar comunicado</button>
+        </form>
+
+        <div class="lista-comunicados" id="lista">
+          <p class="cargando">Cargando comunicados…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let usuario = null;
+    let estado = { esModerador: false, miId: null };
+
+    function esc(t) {
+      return String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    function fechaHora(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+        ' · ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function render(comunicados) {
+      const cont = document.getElementById('lista');
+      if (!comunicados.length) {
+        cont.innerHTML = '<p class="cargando">Todavía no hay comunicados.</p>';
+        return;
+      }
+      cont.innerHTML = comunicados.map((c) => {
+        const rolAutor = (App.ROLES[c.autor_rol] || {}).nombre || c.autor_rol;
+        const puedeBorrar = estado.esModerador || c.autor_id === estado.miId;
+        const borrar = puedeBorrar
+          ? `<button class="btn-mini peligro" data-del="${c.id}">Eliminar</button>` : '';
+        return `
+          <article class="comunicado">
+            <div class="com-head">
+              <h2 class="com-titulo">${esc(c.titulo)}</h2>
+              <span class="com-audiencia">${App.AUDIENCIAS[c.audiencia] || c.audiencia}</span>
+            </div>
+            <p class="com-cuerpo">${esc(c.cuerpo).replace(/\n/g, '<br>')}</p>
+            <div class="com-foot">
+              <span class="com-autor">${esc(c.autor_nombre)} · ${rolAutor} · ${fechaHora(c.creado_en)}</span>
+              ${borrar}
+            </div>
+          </article>`;
+      }).join('');
+
+      cont.querySelectorAll('[data-del]').forEach((b) =>
+        b.addEventListener('click', () => eliminar(b.dataset.del)));
+    }
+
+    async function cargar() {
+      const token = App.obtenerToken();
+      const r = await fetch('/api/comunicados', { headers: { Authorization: `Bearer ${token}` } });
+      const data = await r.json();
+      if (!r.ok || !data.ok) {
+        document.getElementById('lista').innerHTML = '<p class="cargando">No se pudieron cargar los comunicados.</p>';
+        return;
+      }
+      estado.esModerador = data.esModerador;
+      estado.miId = data.miId;
+
+      const form = document.getElementById('publicar');
+      if (data.puedePublicar) {
+        form.hidden = false;
+        document.getElementById('subtitulo').textContent = 'Publicá avisos y leé los de la comunidad.';
+      }
+      render(data.comunicados);
+    }
+
+    async function eliminar(id) {
+      const token = App.obtenerToken();
+      try {
+        const r = await fetch(`/api/comunicados/${id}`, {
+          method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'No se pudo eliminar.');
+        App.toast('Comunicado eliminado');
+        await cargar();
+      } catch (error) {
+        App.toast(error.message);
+      }
+    }
+
+    document.getElementById('publicar').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const mensaje = document.getElementById('mensaje');
+      const boton = document.getElementById('boton-publicar');
+      App.ocultarMensaje(mensaje);
+
+      const body = {
+        titulo: document.getElementById('titulo').value.trim(),
+        cuerpo: document.getElementById('cuerpo').value.trim(),
+        audiencia: document.getElementById('audiencia').value,
+      };
+      if (!body.titulo || !body.cuerpo) {
+        App.mostrarMensaje(mensaje, 'Completá el título y el mensaje.', 'error');
+        return;
+      }
+
+      boton.disabled = true;
+      boton.textContent = 'Publicando…';
+      try {
+        const token = App.obtenerToken();
+        const r = await fetch('/api/comunicados', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(body),
+        });
+        const data = await r.json();
+        if (!r.ok || !data.ok) throw new Error(data.error || 'No se pudo publicar.');
+        document.getElementById('titulo').value = '';
+        document.getElementById('cuerpo').value = '';
+        App.toast('Comunicado publicado');
+        await cargar();
+      } catch (error) {
+        App.mostrarMensaje(mensaje, error.message, 'error');
+      } finally {
+        boton.disabled = false;
+        boton.textContent = 'Publicar comunicado';
+      }
+    });
+
+    (async () => {
+      usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      await cargar();
+    })();
+  </script>
+</body>
+</html>
