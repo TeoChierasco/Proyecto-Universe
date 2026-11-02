@@ -21,6 +21,7 @@ const legajosRoutes = require('./routes/legajos');
 const cursosRoutes = require('./routes/cursos');
 const profesoresRoutes = require('./routes/profesores');
 const calificacionesRoutes = require('./routes/calificaciones');
+const reportesRoutes = require('./routes/reportes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -45,6 +46,7 @@ app.use('/api/legajos', legajosRoutes);
 app.use('/api/cursos', cursosRoutes);
 app.use('/api/profesores', profesoresRoutes);
 app.use('/api/calificaciones', calificacionesRoutes);
+app.use('/api/reportes', reportesRoutes);
 
 // Cualquier ruta no-API desconocida vuelve a la pantalla de bienvenida
 app.use((req, res, next) => {

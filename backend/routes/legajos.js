@@ -55,7 +55,7 @@ function resumenDocs(docsDelAlumno) {
 // GET /api/legajos — todos los alumnos con su resumen de documentación.
 router.get('/', requireAuth, soloAdmin, async (req, res) => {
   const [aluRes, insRes, curRes, docRes] = await Promise.all([
-    supabaseAdmin.from('perfiles').select('id, nombre, apellido, email, documento').eq('rol', 'alumno').order('apellido').order('nombre'),
+    supabaseAdmin.from('perfiles').select('id, nombre, apellido, email, documento, situacion').eq('rol', 'alumno').order('apellido').order('nombre'),
     supabaseAdmin.from('inscripciones').select('alumno_id, curso_id'),
     supabaseAdmin.from('cursos').select('id, anio, division').order('anio').order('division'),
     supabaseAdmin.from('legajo_documentos').select('alumno_id, tipo, estado'),
@@ -75,6 +75,7 @@ router.get('/', requireAuth, soloAdmin, async (req, res) => {
 
   const alumnos = aluRes.data.map((a) => ({
     ...a,
+    situacion: a.situacion || 'activo',
     cursoId: cursoDe[a.id] || null,
     documentacion: resumenDocs(docsDe[a.id]),
   }));

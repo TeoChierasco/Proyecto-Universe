@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Resumen general</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1>Resumen <span class="destello">general</span></h1>
+          <p class="subtitulo" id="subtitulo">Nivel Secundario</p>
+        </div>
+
+        <div class="tablero lista-ancha" id="tablero">
+          <p class="cargando">Armando el resumen…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <div class="tooltip-grafico" id="tooltip" role="tooltip" hidden></div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    const num = (n) => (n == null ? '—' : Number(n).toLocaleString('es-AR'));
+    const porc = (n) => (n == null ? '—' : `${String(n).replace('.', ',')} %`);
+
+    async function api(ruta) {
+      const r = await fetch(ruta, { headers: { Authorization: `Bearer ${App.obtenerToken()}` } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function tile(label, valor, detalle, link) {
+      const inner = `
+        <span class="tile-label">${esc(label)}</span>
+        <span class="tile-valor">${valor}</span>
+        ${detalle ? `<span class="tile-detalle">${detalle}</span>` : ''}`;
+      return link
+        ? `<a class="tile tile-enlace" href="${link}">${inner}</a>`
+        : `<div class="tile">${inner}</div>`;
+    }
+
+    const ICONO_ALERTA = { serious: '!', warning: '!', info: 'i' };
+    const NOMBRE_NIVEL = { serious: 'Importante', warning: 'Pendiente', info: 'Aviso' };
+
+    function render(d) {
+      const k = d.kpis;
+      const fecha = new Date(d.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+      document.getElementById('subtitulo').textContent = `Nivel Secundario · ${fecha} · ciclo ${d.ciclo}`;
+
+      const hoyDetalle = k.hoy.registrados
+        ? `${num(k.hoy.ausentes)} ausente${k.hoy.ausentes === 1 ? '' : 's'} de ${num(k.hoy.registrados)} registrados`
+        : 'Todavía no se tomó lista hoy';
+
+      const maxBar = 100;
+      const barras = d.asistenciaPorCurso.map((c) => {
+        const v = c.presentismo;
+        const ancho = v == null ? 0 : Math.max(1, (v / maxBar) * 100);
+        return `
+          <div class="barra-fila" data-tip="${esc(c.curso)} · ${v == null ? 'sin registros' : porc(v) + ' de presentismo'} · ${c.registros} registros · ${c.alumnos} alumnos" tabindex="0">
+            <span class="barra-etiqueta">${esc(c.curso)}</span>
+            <span class="barra-pista">
+              ${v == null ? '' : `<span class="barra-relleno" style="width:${ancho}%"></span>`}
+              <span class="barra-umbral" style="left:85%" aria-hidden="true"></span>
+            </span>
+            <span class="barra-valor">${v == null ? 'sin datos' : porc(v)}${v != null && v < 85 ? ' <span class="barra-aviso">bajo</span>' : ''}</span>
+          </div>`;
+      }).join('');
+
+      document.getElementById('tablero').innerHTML = `
+        <div class="tiles">
+          ${tile('Alumnos activos', num(k.alumnosActivos), `${num(k.cursos)} cursos con alumnos`, '/cursos.html')}
+          ${tile('Presentes hoy', k.hoy.registrados ? num(k.hoy.presentes) : '—', hoyDetalle, '/asistencia.html')}
+          ${tile('Presentismo, últimos 30 días', porc(k.presentismo30), 'Retirados cuentan como presentes', '/reportes.html#asistencia')}
+          ${tile('Alumnos en riesgo', num(k.enRiesgo), `${num(k.conAlgunaDesaprobada)} con alguna materia debajo de ${d.notaAprobacion}`, '/reportes.html#rendimiento')}
+        </div>
+
+        <div class="tablero-columnas">
+          <section class="anio-bloque">
+            <span class="sub-titulo">Para resolver</span>
+            ${d.alertas.length ? `
+              <ul class="alertas">
+                ${d.alertas.map((a) => `
+                  <li class="alerta alerta-${a.nivel}">
+                    <span class="alerta-icono" aria-hidden="true">${ICONO_ALERTA[a.nivel] || 'i'}</span>
+                    <span class="alerta-texto"><span class="alerta-nivel">${NOMBRE_NIVEL[a.nivel] || 'Aviso'}:</span> ${esc(a.texto)}</span>
+                    <a class="btn-mini" href="${a.link}">Ver</a>
+                  </li>`).join('')}
+              </ul>` : '<p class="anio-proximamente">No hay nada pendiente. ¡Todo al día!</p>'}
+          </section>
+
+          <section class="anio-bloque">
+            <span class="sub-titulo">Comunidad</span>
+            <dl class="datos-lista">
+              <div><dt>Profesores</dt><dd>${num(k.profesores)}</dd></div>
+              <div><dt>Preceptores</dt><dd>${num(k.preceptores)}</dd></div>
+              <div><dt>Materias sin docente</dt><dd>${num(k.materiasSinDocente)}</dd></div>
+              <div><dt>Legajos incompletos</dt><dd>${num(k.legajosIncompletos)}</dd></div>
+              <div><dt>Bajas en ${d.ciclo}</dt><dd>${num(k.bajas)}</dd></div>
+              <div><dt>Pases en ${d.ciclo}</dt><dd>${num(k.pases)}</dd></div>
+            </dl>
+          </section>
+        </div>
+
+        <section class="anio-bloque grafico-bloque">
+          <div class="grafico-cabecera">
+            <div>
+              <span class="sub-titulo">Presentismo por curso · últimos 30 días</span>
+              <p class="ayuda-campo">La línea marca el 85 %. Los cursos por debajo dicen <strong>bajo</strong>.</p>
+            </div>
+            <a class="btn-mini" href="/reportes.html#asistencia">Ver tabla</a>
+          </div>
+          ${d.asistenciaPorCurso.length ? `<div class="grafico-barras" id="grafico">${barras}</div>
+            <div class="eje-x"><span>0 %</span><span>50 %</span><span>100 %</span></div>`
+            : '<p class="anio-proximamente">Todavía no hay cursos con alumnos.</p>'}
+        </section>`;
+
+      prepararTooltip();
+    }
+
+    // Tooltip de las barras (mouse y teclado).
+    function prepararTooltip() {
+      const tip = document.getElementById('tooltip');
+      document.querySelectorAll('[data-tip]').forEach((el) => {
+        const mostrar = (x, y) => {
+          tip.textContent = el.dataset.tip;
+          tip.hidden = false;
+          const r = tip.getBoundingClientRect();
+          tip.style.left = `${Math.min(window.innerWidth - r.width - 8, x + 12)}px`;
+          tip.style.top = `${y - r.height - 10}px`;
+        };
+        el.addEventListener('mousemove', (e) => mostrar(e.clientX, e.clientY));
+        el.addEventListener('mouseleave', () => { tip.hidden = true; });
+        el.addEventListener('focus', () => { const r = el.getBoundingClientRect(); mostrar(r.left + r.width / 2, r.top); });
+        el.addEventListener('blur', () => { tip.hidden = true; });
+      });
+    }
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'director' && usuario.rol !== 'secretaria') {
+        document.getElementById('tablero').innerHTML = '<p class="cargando">Esta sección es para Dirección.</p>';
+        return;
+      }
+      try {
+        render(await api('/api/reportes/resumen'));
+      } catch (error) {
+        document.getElementById('tablero').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    })();
+  </script>
+</body>
+</html>

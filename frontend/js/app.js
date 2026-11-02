@@ -51,7 +51,6 @@ const App = {
     profesor: [
       { icono: 'briefcase', titulo: 'Mis cursos',       desc: 'Los cursos y materias que dictás.', link: '/mis-cursos.html' },
       { icono: 'edit',      titulo: 'Cargar notas',     desc: 'Registrá las calificaciones de tus alumnos.', link: '/mis-cursos.html' },
-      { icono: 'clipboard', titulo: 'Tomar asistencia', desc: 'Pasá lista en tus clases.' },
       { icono: 'megaphone', titulo: 'Publicar comunicado', desc: 'Enviá avisos a tus cursos.', link: '/comunicados.html' },
     ],
     preceptor: [
@@ -59,7 +58,7 @@ const App = {
       { icono: 'megaphone', titulo: 'Comunicados',      desc: 'Avisos a los cursos a tu cargo.', link: '/comunicados.html' },
     ],
     secretaria: [
-      { icono: 'cap',       titulo: 'Alumnos',          desc: 'Altas de alumnos e inscripción a cursos.', link: '/alumnos.html' },
+      { icono: 'cap',       titulo: 'Alumnos',          desc: 'Altas, inscripción a cursos, bajas y pases.', link: '/alumnos.html' },
       { icono: 'folder',    titulo: 'Legajos',          desc: 'Datos de cada alumno y documentación pendiente.', link: '/legajos.html' },
       { icono: 'building',  titulo: 'Cursos y divisiones', desc: 'Nómina de alumnos y docentes de cada curso.', link: '/cursos.html' },
       { icono: 'briefcase', titulo: 'Profesores',       desc: 'Docentes, materias, cursos y horas.', link: '/profesores.html' },
@@ -68,11 +67,12 @@ const App = {
       { icono: 'users',     titulo: 'Usuarios',         desc: 'Cuentas registradas y sus roles.', link: '/usuarios.html' },
       { icono: 'book',      titulo: 'Plan de estudios', desc: 'Materias por año y divisiones.', link: '/plan.html' },
       { icono: 'key',       titulo: 'Generar códigos',  desc: 'Códigos de aprobación para Profesores y Preceptores.', link: '/codigos.html' },
+      { icono: 'chart',     titulo: 'Reportes',         desc: 'Asistencia, rendimiento, bajas y pases.', link: '/reportes.html' },
       { icono: 'megaphone', titulo: 'Comunicados',      desc: 'Avisos institucionales.', link: '/comunicados.html' },
     ],
     director: [
-      { icono: 'chart',     titulo: 'Resumen general',  desc: 'Visión global del nivel secundario.' },
-      { icono: 'cap',       titulo: 'Alumnos',          desc: 'Altas de alumnos e inscripción a cursos.', link: '/alumnos.html' },
+      { icono: 'chart',     titulo: 'Resumen general',  desc: 'Visión global del nivel secundario.', link: '/resumen.html' },
+      { icono: 'cap',       titulo: 'Alumnos',          desc: 'Altas, inscripción a cursos, bajas y pases.', link: '/alumnos.html' },
       { icono: 'folder',    titulo: 'Legajos',          desc: 'Datos de cada alumno y documentación pendiente.', link: '/legajos.html' },
       { icono: 'building',  titulo: 'Cursos y divisiones', desc: 'Nómina de alumnos y docentes de cada curso.', link: '/cursos.html' },
       { icono: 'briefcase', titulo: 'Profesores',       desc: 'Docentes, materias, cursos y horas.', link: '/profesores.html' },
@@ -81,7 +81,7 @@ const App = {
       { icono: 'users',     titulo: 'Usuarios',         desc: 'Cuentas registradas y sus roles.', link: '/usuarios.html' },
       { icono: 'book',      titulo: 'Plan de estudios', desc: 'Materias por año del secundario.', link: '/plan.html' },
       { icono: 'key',       titulo: 'Códigos de Secretaría', desc: 'Generá códigos de aprobación para Secretaría.', link: '/codigos.html' },
-      { icono: 'file',      titulo: 'Reportes',         desc: 'Indicadores académicos y de asistencia.' },
+      { icono: 'file',      titulo: 'Reportes',         desc: 'Asistencia, rendimiento, bajas y pases.', link: '/reportes.html' },
       { icono: 'megaphone', titulo: 'Comunicados',      desc: 'Avisos a toda la comunidad.', link: '/comunicados.html' },
     ],
   },

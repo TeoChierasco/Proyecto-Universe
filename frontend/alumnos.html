@@ -62,6 +62,11 @@
           <button type="submit" class="boton boton-primario" id="btn-crear">Crear alumno</button>
         </form>
 
+        <div class="pestanias" id="pestanias" hidden>
+          <button class="pestania activa" data-vista="activos">Activos <span class="pestania-num" id="n-activos">0</span></button>
+          <button class="pestania" data-vista="salidas">Bajas y pases <span class="pestania-num" id="n-salidas">0</span></button>
+        </div>
+
         <div class="barra-busqueda" id="barra" hidden>
           <input type="text" class="input-mini" id="buscar" placeholder="Buscar por nombre, email o curso…" />
         </div>
@@ -77,7 +82,13 @@
 
   <script src="/js/app.js"></script>
   <script>
-    let estado = { alumnos: [], cursos: [] };
+    let estado = { alumnos: [], cursos: [], vista: 'activos', formAbierto: null };
+    const hoy = () => new Date().toISOString().slice(0, 10);
+    function fechaCorta(iso) {
+      if (!iso) return '';
+      const [a, m, d] = iso.slice(0, 10).split('-');
+      return `${d}/${m}/${a}`;
+    }
 
     function esc(t) {
       return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -105,32 +116,141 @@
     function renderLista() {
       const filtro = (document.getElementById('buscar').value || '').toLowerCase().trim();
       const cont = document.getElementById('lista');
+      const activos = estado.alumnos.filter((a) => a.situacion === 'activo');
+      const salidas = estado.alumnos.filter((a) => a.situacion !== 'activo');
+      document.getElementById('n-activos').textContent = activos.length;
+      document.getElementById('n-salidas').textContent = salidas.length;
+      document.querySelectorAll('[data-vista]').forEach((b) => b.classList.toggle('activa', b.dataset.vista === estado.vista));
 
-      const visibles = estado.alumnos.filter((a) => {
+      const base = estado.vista === 'activos' ? activos : salidas;
+      const visibles = base.filter((a) => {
         if (!filtro) return true;
         const curso = estado.cursos.find((c) => c.id === a.cursoId);
-        const txt = `${a.nombre} ${a.apellido} ${a.email} ${curso ? cursoLabel(curso) : ''}`.toLowerCase();
+        const txt = `${a.nombre} ${a.apellido} ${a.email} ${a.documento || ''} ${curso ? cursoLabel(curso) : ''}`.toLowerCase();
         return txt.includes(filtro);
       });
 
       if (!visibles.length) {
-        cont.innerHTML = '<p class="cargando">No hay alumnos todavía.</p>';
+        cont.innerHTML = `<p class="cargando">${filtro ? 'Nadie coincide con la búsqueda.' : estado.vista === 'activos' ? 'No hay alumnos todavía.' : 'No hay bajas ni pases registrados.'}</p>`;
         return;
       }
 
-      cont.innerHTML = visibles.map((a) => `
-        <div class="fila-usuario">
-          <div class="fila-info">
-            <span class="usuario-nombre-lista">${esc(a.apellido)}, ${esc(a.nombre)}</span>
-            <span class="codigo-meta">${esc(a.email)} · DNI ${esc(a.documento || '—')}</span>
-          </div>
-          <div class="fila-acciones">
-            <select class="input-mini select-rol" data-curso-de="${a.id}">${opcionesCurso(a.cursoId)}</select>
-          </div>
-        </div>`).join('');
+      cont.innerHTML = visibles.map((a) => estado.vista === 'activos' ? filaActivo(a) : filaSalida(a)).join('');
 
-      cont.querySelectorAll('[data-curso-de]').forEach((s) =>
-        s.addEventListener('change', () => asignarCurso(s.dataset.cursoDe, s.value)));
+      cont.querySelectorAll('[data-curso-de]').forEach((sel) =>
+        sel.addEventListener('change', () => asignarCurso(sel.dataset.cursoDe, sel.value)));
+      cont.querySelectorAll('[data-abrir-baja]').forEach((b) =>
+        b.addEventListener('click', () => { estado.formAbierto = estado.formAbierto === b.dataset.abrirBaja ? null : b.dataset.abrirBaja; renderLista(); }));
+      cont.querySelectorAll('[data-abrir-reinc]').forEach((b) =>
+        b.addEventListener('click', () => { estado.formAbierto = estado.formAbierto === b.dataset.abrirReinc ? null : b.dataset.abrirReinc; renderLista(); }));
+      cont.querySelectorAll('.form-baja').forEach(prepararFormBaja);
+      cont.querySelectorAll('.form-reinc').forEach(prepararFormReinc);
+    }
+
+    function filaActivo(a) {
+      const abierto = estado.formAbierto === a.id;
+      return `
+        <div class="fila-legajo ${abierto ? 'abierta' : ''}">
+          <div class="fila-legajo-cabecera">
+            <div class="fila-info">
+              <span class="usuario-nombre-lista">${esc(a.apellido)}, ${esc(a.nombre)}</span>
+              <span class="codigo-meta">${esc(a.email)} · DNI ${esc(a.documento || '—')}</span>
+            </div>
+            <div class="fila-acciones">
+              <select class="input-mini select-rol" data-curso-de="${a.id}" aria-label="Curso de ${esc(a.nombre)}">${opcionesCurso(a.cursoId)}</select>
+              <button class="btn-mini peligro" data-abrir-baja="${a.id}">${abierto ? 'Cancelar' : 'Baja / pase'}</button>
+            </div>
+          </div>
+          ${abierto ? `
+            <form class="form-baja form-inline" data-id="${a.id}">
+              <div class="fila-doble">
+                <div class="campo">
+                  <label>Tipo de movimiento</label>
+                  <select name="tipo">
+                    <option value="pase">Pase a otra escuela</option>
+                    <option value="baja">Baja</option>
+                  </select>
+                </div>
+                <div class="campo">
+                  <label>Fecha</label>
+                  <input type="date" name="fecha" value="${hoy()}" max="${hoy()}" />
+                </div>
+              </div>
+              <div class="campo campo-destino">
+                <label>Escuela de destino</label>
+                <input type="text" name="escuelaDestino" maxlength="200" placeholder="Nombre de la escuela" />
+              </div>
+              <div class="campo">
+                <label>Motivo (opcional)</label>
+                <input type="text" name="motivo" maxlength="500" placeholder="Ej: mudanza, cambio de orientación…" />
+              </div>
+              <p class="ayuda-campo">El alumno sale de su curso (deja de figurar en asistencia y planillas). Su legajo, notas y asistencia se conservan.</p>
+              <button type="submit" class="boton boton-peligro">Confirmar</button>
+            </form>` : ''}
+        </div>`;
+    }
+
+    function filaSalida(a) {
+      const m = a.movimiento || {};
+      const abierto = estado.formAbierto === a.id;
+      const detalle = a.situacion === 'pase'
+        ? `Pase a ${esc(m.escuelaDestino || '—')}`
+        : 'Baja';
+      return `
+        <div class="fila-legajo ${abierto ? 'abierta' : ''}">
+          <div class="fila-legajo-cabecera">
+            <div class="fila-info">
+              <span class="usuario-nombre-lista">${esc(a.apellido)}, ${esc(a.nombre)}
+                <span class="estado-vinculo rechazado">${a.situacion === 'pase' ? 'Pase' : 'Baja'}</span></span>
+              <span class="codigo-meta">${detalle}${m.fecha ? ' · ' + fechaCorta(m.fecha) : ''}${m.motivo ? ' · ' + esc(m.motivo) : ''} · DNI ${esc(a.documento || '—')}</span>
+            </div>
+            <div class="fila-acciones">
+              <a class="btn-mini" href="/boletin.html?id=${a.id}">Boletín</a>
+              <button class="btn-mini" data-abrir-reinc="${a.id}">${abierto ? 'Cancelar' : 'Reincorporar'}</button>
+            </div>
+          </div>
+          ${abierto ? `
+            <form class="form-reinc form-inline" data-id="${a.id}">
+              <div class="campo">
+                <label>Curso al que vuelve</label>
+                <select name="cursoId">${opcionesCurso(null)}</select>
+              </div>
+              <button type="submit" class="boton boton-primario">Reincorporar</button>
+            </form>` : ''}
+        </div>`;
+    }
+
+    function prepararFormBaja(form) {
+      const tipo = form.querySelector('[name="tipo"]');
+      const destino = form.querySelector('.campo-destino');
+      const sync = () => { destino.hidden = tipo.value !== 'pase'; };
+      tipo.addEventListener('change', sync); sync();
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const datos = Object.fromEntries(new FormData(form).entries());
+        if (datos.tipo === 'pase' && !datos.escuelaDestino.trim()) { App.toast('Indicá la escuela de destino'); return; }
+        const a = estado.alumnos.find((x) => x.id === form.dataset.id);
+        if (!confirm(`¿Confirmás ${datos.tipo === 'pase' ? 'el pase' : 'la baja'} de ${a.nombre} ${a.apellido}?`)) return;
+        try {
+          const r = await api('POST', `/api/alumnos/${form.dataset.id}/baja`, datos);
+          App.toast(r.message);
+          estado.formAbierto = null;
+          await cargar();
+        } catch (error) { App.toast(error.message); }
+      });
+    }
+
+    function prepararFormReinc(form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const cursoId = form.querySelector('[name="cursoId"]').value;
+        try {
+          const r = await api('POST', `/api/alumnos/${form.dataset.id}/reincorporar`, { cursoId: cursoId ? Number(cursoId) : null });
+          App.toast(r.message);
+          estado.formAbierto = null;
+          await cargar();
+        } catch (error) { App.toast(error.message); }
+      });
     }
 
     async function cargar() {
@@ -140,9 +260,10 @@
         estado.cursos = data.cursos;
         document.getElementById('form-crear').hidden = false;
         document.getElementById('barra').hidden = false;
+        document.getElementById('pestanias').hidden = false;
         document.getElementById('curso-nuevo').innerHTML = opcionesCurso(null);
         document.getElementById('subtitulo').textContent =
-          `${data.alumnos.length} alumno${data.alumnos.length === 1 ? '' : 's'} · asigná cada uno a un curso`;
+          `${data.alumnos.filter((a) => a.situacion === 'activo').length} alumnos activos · asigná cada uno a un curso`;
         renderLista();
       } catch (error) {
         document.getElementById('lista').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
@@ -201,6 +322,9 @@
     });
 
     document.getElementById('buscar').addEventListener('input', renderLista);
+    document.querySelectorAll('[data-vista]').forEach((b) => b.addEventListener('click', () => {
+      estado.vista = b.dataset.vista; estado.formAbierto = null; renderLista();
+    }));
 
     (async () => {
       const usuario = await App.exigirSesion();

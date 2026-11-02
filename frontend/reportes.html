@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Reportes</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1><span class="destello">Reportes</span></h1>
+          <p class="subtitulo">Asistencia, rendimiento académico y movimientos de alumnos</p>
+        </div>
+
+        <div class="pestanias" id="pestanias">
+          <button class="pestania" data-tab="asistencia">Asistencia</button>
+          <button class="pestania" data-tab="rendimiento">Rendimiento</button>
+          <button class="pestania" data-tab="movimientos">Bajas y pases</button>
+        </div>
+
+        <!-- Filtros: una sola fila arriba de los resultados -->
+        <div class="filtros-asistencia" id="filtros-asistencia" hidden>
+          <label class="filtro-etiqueta">Desde <input type="date" class="input-mini" id="desde" /></label>
+          <label class="filtro-etiqueta">Hasta <input type="date" class="input-mini" id="hasta" /></label>
+          <button class="boton boton-primario" id="btn-asistencia" type="button">Actualizar</button>
+        </div>
+        <div class="filtros-asistencia" id="filtros-rendimiento" hidden>
+          <select class="input-mini" id="ciclo-r"></select>
+          <select class="input-mini" id="periodo">
+            <option value="">Todos los trimestres</option>
+            <option value="1">1.er trimestre</option>
+            <option value="2">2.º trimestre</option>
+            <option value="3">3.er trimestre</option>
+          </select>
+        </div>
+        <div class="filtros-asistencia" id="filtros-movimientos" hidden>
+          <select class="input-mini" id="ciclo-m"></select>
+        </div>
+
+        <div class="reporte lista-ancha" id="contenido">
+          <p class="cargando">Elegí un reporte.</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const anio = new Date().getFullYear();
+    let tab = 'asistencia';
+    const tablas = {}; // id → { columnas, filas, nombre } para exportar CSV
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    const num = (n) => (n == null ? '—' : String(n).replace('.', ','));
+    const porc = (n) => (n == null ? '—' : `${String(n).replace('.', ',')} %`);
+    function fechaCorta(iso) { const [a, m, d] = iso.slice(0, 10).split('-'); return `${d}/${m}/${a}`; }
+    function haceDias(n) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); }
+
+    async function api(ruta) {
+      const r = await fetch(ruta, { headers: { Authorization: `Bearer ${App.obtenerToken()}` } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    /**
+     * Arma una tabla y la registra para exportarla.
+     * columnas: [{ clave, titulo, fmt?, clase? }]
+     */
+    function tabla(id, nombre, columnas, filas, vacio) {
+      tablas[id] = { nombre, columnas, filas };
+      if (!filas.length) return `<p class="anio-proximamente">${vacio}</p>`;
+      return `
+        <div class="tabla-acciones">
+          <span class="codigo-meta">${filas.length} fila${filas.length === 1 ? '' : 's'}</span>
+          <button class="btn-mini" data-csv="${id}" type="button">Descargar CSV (Excel)</button>
+        </div>
+        <div class="planilla-contenedor">
+          <table class="planilla tabla-reporte">
+            <thead><tr>${columnas.map((c) => `<th class="${c.clase || ''}">${esc(c.titulo)}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${filas.map((f) => `<tr>${columnas.map((c) => {
+                const v = f[c.clave];
+                const html = c.html ? c.html(v, f) : esc(c.fmt ? c.fmt(v, f) : v);
+                return `<td class="${c.clase || ''}">${html}</td>`;
+              }).join('')}</tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    // CSV con ";" y BOM: se abre bien en Excel configurado en español.
+    function descargarCSV(id) {
+      const t = tablas[id];
+      if (!t) return;
+      const celda = (v) => {
+        const s = v == null ? '' : typeof v === 'number' ? String(v).replace('.', ',') : String(v);
+        return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const lineas = [t.columnas.map((c) => celda(c.titulo)).join(';')]
+        .concat(t.filas.map((f) => t.columnas.map((c) => celda(f[c.clave])).join(';')));
+      const blob = new Blob(['﻿' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${t.nombre}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    }
+
+    function engancharCSV() {
+      document.querySelectorAll('[data-csv]').forEach((b) => b.addEventListener('click', () => descargarCSV(b.dataset.csv)));
+    }
+
+    function resumenNumeros(items) {
+      return `<div class="tiles tiles-chicos">${items.map(([l, v]) => `<div class="tile"><span class="tile-label">${esc(l)}</span><span class="tile-valor">${v}</span></div>`).join('')}</div>`;
+    }
+
+    // ---------- Asistencia ----------
+    async function cargarAsistencia() {
+      const cont = document.getElementById('contenido');
+      cont.innerHTML = '<p class="cargando">Calculando asistencia…</p>';
+      const desde = document.getElementById('desde').value;
+      const hasta = document.getElementById('hasta').value;
+      try {
+        const d = await api(`/api/reportes/asistencia?desde=${desde}&hasta=${hasta}`);
+        const marca = (v) => (v != null && v < 85 ? `${porc(v)} <span class="barra-aviso">bajo</span>` : porc(v));
+        cont.innerHTML = `
+          ${resumenNumeros([
+            ['Presentismo del período', porc(d.total.presentismo)],
+            ['Registros', num(d.total.registros)],
+            ['Ausencias', num(d.total.ausentes)],
+            ['Justificadas', num(d.total.justificadas)],
+          ])}
+          <h2 class="titulo-lista">Por curso</h2>
+          ${tabla('asis-cursos', `asistencia-por-curso_${desde}_${hasta}`, [
+            { clave: 'curso', titulo: 'Curso', clase: 'col-alumno' },
+            { clave: 'alumnos', titulo: 'Alumnos' },
+            { clave: 'registros', titulo: 'Registros' },
+            { clave: 'presentes', titulo: 'Presentes' },
+            { clave: 'ausentes', titulo: 'Ausentes' },
+            { clave: 'retirados', titulo: 'Retirados' },
+            { clave: 'justificadas', titulo: 'Justificadas' },
+            { clave: 'presentismo', titulo: 'Presentismo', html: marca },
+          ], d.porCurso, 'No hay cursos con alumnos.')}
+          <h2 class="titulo-lista">Alumnos con inasistencias</h2>
+          ${tabla('asis-alumnos', `inasistencias-por-alumno_${desde}_${hasta}`, [
+            { clave: 'alumno', titulo: 'Alumno/a', clase: 'col-alumno' },
+            { clave: 'curso', titulo: 'Curso' },
+            { clave: 'ausentes', titulo: 'Ausencias' },
+            { clave: 'injustificadas', titulo: 'Injustificadas' },
+            { clave: 'retirados', titulo: 'Retiros' },
+            { clave: 'registros', titulo: 'Días registrados' },
+            { clave: 'presentismo', titulo: 'Presentismo', html: marca },
+          ], d.porAlumno, 'Ningún alumno tiene inasistencias en este período.')}
+          <p class="ayuda-campo">Período: ${fechaCorta(d.desde)} al ${fechaCorta(d.hasta)}. Presentismo = días no ausentes / días registrados (los retiros cuentan como presentes). Solo alumnos activos.</p>`;
+        engancharCSV();
+      } catch (error) {
+        cont.innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    // ---------- Rendimiento ----------
+    async function cargarRendimiento() {
+      const cont = document.getElementById('contenido');
+      cont.innerHTML = '<p class="cargando">Calculando rendimiento…</p>';
+      const ciclo = document.getElementById('ciclo-r').value;
+      const periodo = document.getElementById('periodo').value;
+      try {
+        const d = await api(`/api/reportes/rendimiento?ciclo=${ciclo}${periodo ? '&periodo=' + periodo : ''}`);
+        const nota = (v) => (v == null ? '—' : v < d.notaAprobacion ? `<span class="texto-alerta">${num(v)}</span>` : num(v));
+        const sufijo = periodo ? `_t${periodo}` : '';
+        cont.innerHTML = `
+          <h2 class="titulo-lista">Alumnos en riesgo <span class="codigo-meta">(${d.umbralRiesgo} o más materias con promedio menor a ${d.notaAprobacion})</span></h2>
+          ${tabla('rend-riesgo', `alumnos-en-riesgo_${ciclo}${sufijo}`, [
+            { clave: 'alumno', titulo: 'Alumno/a', clase: 'col-alumno', html: (v, f) => `<a class="nomina-enlace" href="/boletin.html?id=${f.id}">${esc(v)}</a>` },
+            { clave: 'curso', titulo: 'Curso' },
+            { clave: 'cantidad', titulo: 'Materias' },
+            { clave: 'materias', titulo: 'Detalle', clase: 'col-texto' },
+            { clave: 'promedioGeneral', titulo: 'Prom. general', html: nota },
+          ], d.enRiesgo, 'No hay alumnos en riesgo con los filtros elegidos.')}
+          <h2 class="titulo-lista">Por curso y materia</h2>
+          ${tabla('rend-materias', `rendimiento-por-materia_${ciclo}${sufijo}`, [
+            { clave: 'curso', titulo: 'Curso', clase: 'col-alumno' },
+            { clave: 'materia', titulo: 'Materia', clase: 'col-texto' },
+            { clave: 'profesor', titulo: 'Profesor/a', clase: 'col-texto' },
+            { clave: 'alumnosConNota', titulo: 'Con nota' },
+            { clave: 'promedio', titulo: 'Promedio', html: nota },
+            { clave: 'desaprobados', titulo: `Debajo de ${d.notaAprobacion}` },
+            { clave: 'pctDesaprobados', titulo: '% debajo', fmt: (v) => porc(v) },
+          ], d.porMateria, 'Todavía no hay notas cargadas para este ciclo.')}`;
+        engancharCSV();
+      } catch (error) {
+        cont.innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    // ---------- Movimientos ----------
+    async function cargarMovimientos() {
+      const cont = document.getElementById('contenido');
+      cont.innerHTML = '<p class="cargando">Cargando movimientos…</p>';
+      const ciclo = document.getElementById('ciclo-m').value;
+      try {
+        const d = await api(`/api/reportes/movimientos?ciclo=${ciclo}`);
+        const cuenta = (t) => d.movimientos.filter((m) => m.tipo === t).length;
+        cont.innerHTML = `
+          ${resumenNumeros([['Bajas', cuenta('Baja')], ['Pases', cuenta('Pase')], ['Reincorporaciones', cuenta('Reincorporación')]])}
+          <h2 class="titulo-lista">Movimientos ${ciclo}</h2>
+          ${tabla('movs', `bajas-y-pases_${ciclo}`, [
+            { clave: 'fecha', titulo: 'Fecha', clase: 'col-alumno', fmt: (v) => fechaCorta(v) },
+            { clave: 'tipo', titulo: 'Tipo' },
+            { clave: 'alumno', titulo: 'Alumno/a', clase: 'col-texto' },
+            { clave: 'curso', titulo: 'Curso' },
+            { clave: 'destino', titulo: 'Escuela de destino', clase: 'col-texto' },
+            { clave: 'motivo', titulo: 'Motivo', clase: 'col-texto' },
+          ], d.movimientos, `No hubo bajas ni pases en ${ciclo}.`)}`;
+        engancharCSV();
+      } catch (error) {
+        cont.innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    const CARGAR = { asistencia: cargarAsistencia, rendimiento: cargarRendimiento, movimientos: cargarMovimientos };
+
+    function abrir(nuevo) {
+      tab = CARGAR[nuevo] ? nuevo : 'asistencia';
+      history.replaceState(null, '', `#${tab}`);
+      document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('activa', b.dataset.tab === tab));
+      ['asistencia', 'rendimiento', 'movimientos'].forEach((t) => { document.getElementById(`filtros-${t}`).hidden = t !== tab; });
+      CARGAR[tab]();
+    }
+
+    // Valores iniciales de los filtros.
+    document.getElementById('desde').value = haceDias(30);
+    document.getElementById('hasta').value = new Date().toISOString().slice(0, 10);
+    const ciclos = [anio, anio - 1, anio - 2].map((a) => `<option value="${a}">Ciclo ${a}</option>`).join('');
+    document.getElementById('ciclo-r').innerHTML = ciclos;
+    document.getElementById('ciclo-m').innerHTML = ciclos;
+
+    document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => abrir(b.dataset.tab)));
+    window.addEventListener('hashchange', () => { if (location.hash.slice(1) !== tab) abrir(location.hash.slice(1)); });
+    document.getElementById('btn-asistencia').addEventListener('click', cargarAsistencia);
+    document.getElementById('ciclo-r').addEventListener('change', cargarRendimiento);
+    document.getElementById('periodo').addEventListener('change', cargarRendimiento);
+    document.getElementById('ciclo-m').addEventListener('change', cargarMovimientos);
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'director' && usuario.rol !== 'secretaria') {
+        document.getElementById('contenido').innerHTML = '<p class="cargando">Los reportes son para Dirección y Secretaría.</p>';
+        return;
+      }
+      abrir(location.hash.slice(1));
+    })();
+  </script>
+</body>
+</html>

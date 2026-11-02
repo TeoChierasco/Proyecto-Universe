@@ -51,7 +51,7 @@ router.get('/', requireAuth, soloAdmin, async (req, res) => {
   }));
 
   const { count: totalAlumnos } = await supabaseAdmin
-    .from('perfiles').select('id', { count: 'exact', head: true }).eq('rol', 'alumno');
+    .from('perfiles').select('id', { count: 'exact', head: true }).eq('rol', 'alumno').eq('situacion', 'activo');
   const inscriptos = insRes.data.filter((i) => i.curso_id).length;
 
   return res.json({ ok: true, cursos, alumnosSinCurso: Math.max(0, (totalAlumnos || 0) - inscriptos) });

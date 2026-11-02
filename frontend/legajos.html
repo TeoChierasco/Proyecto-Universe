@@ -35,6 +35,7 @@
             <option value="">Todos los legajos</option>
             <option value="pendientes">Con documentación pendiente</option>
             <option value="completos">Completos</option>
+            <option value="egresados">Bajas y pases</option>
           </select>
         </div>
 
@@ -93,8 +94,9 @@
     }
 
     function renderContadores() {
-      const total = estado.alumnos.length;
-      const completos = estado.alumnos.filter((a) => a.documentacion.completos === a.documentacion.total).length;
+      const activos = estado.alumnos.filter((a) => a.situacion === 'activo');
+      const total = activos.length;
+      const completos = activos.filter((a) => a.documentacion.completos === a.documentacion.total).length;
       document.getElementById('c-total').textContent = total;
       document.getElementById('c-completos').textContent = completos;
       document.getElementById('c-pendientes').textContent = total - completos;
@@ -108,6 +110,8 @@
 
       const visibles = estado.alumnos.filter((a) => {
         const completo = a.documentacion.completos === a.documentacion.total;
+        if (est === 'egresados') { if (a.situacion === 'activo') return false; }
+        else if (a.situacion !== 'activo') return false;
         if (est === 'pendientes' && completo) return false;
         if (est === 'completos' && !completo) return false;
         if (curso === 'sin' && a.cursoId) return false;
@@ -125,8 +129,8 @@
         <div class="fila-legajo ${estado.abierto === a.id ? 'abierta' : ''}" data-id="${a.id}">
           <div class="fila-legajo-cabecera">
             <div class="fila-info">
-              <span class="usuario-nombre-lista">${esc(a.apellido)}, ${esc(a.nombre)}</span>
-              <span class="codigo-meta">${cursoLabel(a.cursoId)} · DNI ${esc(a.documento || '—')}</span>
+              <span class="usuario-nombre-lista">${esc(a.apellido)}, ${esc(a.nombre)}${a.situacion !== 'activo' ? ` <span class="estado-vinculo rechazado">${a.situacion === 'pase' ? 'Pase' : 'Baja'}</span>` : ''}</span>
+              <span class="codigo-meta">${a.situacion === 'activo' ? cursoLabel(a.cursoId) : 'Ya no cursa'} · DNI ${esc(a.documento || '—')}</span>
             </div>
             <div class="fila-acciones">
               ${barraProgreso(a.documentacion)}

@@ -36,6 +36,8 @@ Flujo de entrada a la aplicación:
 - Asistencia
 - Familia / hijos (el padre/tutor solicita el vínculo con el DNI del alumno y **Secretaría lo aprueba** antes de que pueda ver sus datos)
 - Inscripciones y cursos (esquemas SQL)
+- **Resumen general y Reportes (Dirección y Secretaría):** indicadores del día, alertas de lo pendiente, presentismo por curso; reportes de asistencia, rendimiento (alumnos en riesgo) y bajas/pases con descarga CSV para Excel
+- **Bajas y pases:** baja o pase a otra escuela con historial y reincorporación; el alumno sale de su curso pero se conservan legajo, notas y asistencia
 - **Calificaciones y boletines:** el profesor ve sus cursos y carga notas por trimestre en una planilla; alumnos, familias (con vínculo aprobado), Secretaría y Dirección ven el boletín imprimible
 - **Secretaría Pedagógica (1.ª etapa):** legajos y documentación de alumnos, cursos y divisiones (nómina y docentes por curso), profesores con materias, cursos y horas semanales
 
@@ -90,6 +92,7 @@ La aplicación queda disponible en `http://localhost:3000`.
 │   │   ├── cursos.js         # nómina y docentes por curso
 │   │   ├── profesores.js     # asignaciones docentes (materia + curso + horas)
 │   │   ├── calificaciones.js # mis cursos, planilla de notas y boletín
+│   │   ├── reportes.js       # resumen general y reportes de Dirección
 │   │   └── usuarios.js       # gestión de cuentas
 │   ├── middleware/
 │   │   └── requireAuth.js    # valida token y carga perfil
@@ -105,7 +108,8 @@ La aplicación queda disponible en `http://localhost:3000`.
 │   │   ├── inscripciones.sql
 │   │   ├── secretaria.sql       # legajos, documentos y asignaciones docentes
 │   │   ├── correcciones-01.sql  # códigos de padres y vínculos con aprobación
-│   │   └── calificaciones.sql   # notas por alumno, materia y trimestre
+│   │   ├── calificaciones.sql   # notas por alumno, materia y trimestre
+│   │   └── bajas.sql            # situación del alumno e historial de bajas y pases
 │   └── scripts/              # Utilidades de verificación
 │
 └── frontend/             # Interfaz (HTML + CSS + JS vanilla)
@@ -128,6 +132,8 @@ La aplicación queda disponible en `http://localhost:3000`.
     ├── mis-cursos.html
     ├── notas.html
     ├── boletin.html
+    ├── resumen.html
+    ├── reportes.html
     ├── legajos.html
     ├── cursos.html
     ├── profesores.html
@@ -146,7 +152,7 @@ La aplicación queda disponible en `http://localhost:3000`.
 3. Ejecutar los esquemas: Supabase → **SQL Editor** → pegar cada archivo de
    `backend/db/` → **Run**, en este orden:
    `schema.sql` → `academico.sql` → `cursos.sql` → `familia.sql` → `inscripciones.sql` →
-   `asistencia.sql` → `comunicados.sql` → `secretaria.sql` → `correcciones-01.sql` → `calificaciones.sql`.
+   `asistencia.sql` → `comunicados.sql` → `secretaria.sql` → `correcciones-01.sql` → `calificaciones.sql` → `bajas.sql`.
    Todos son idempotentes: se pueden volver a correr sin duplicar datos.
 4. Verificar la conexión: `node backend/scripts/test-conexion.js`.
 
