@@ -76,7 +76,7 @@
         boton.textContent = 'Ingresando…';
         try {
           const respuesta = await App.post('/api/auth/login', { email, password });
-          App.guardarSesion(respuesta.token, respuesta.usuario);
+          App.guardarSesion(respuesta.token, respuesta.usuario, respuesta.refreshToken);
           App.mostrarMensaje(mensaje, respuesta.message, 'exito');
           window.location.href = '/panel.html';
         } catch (error) {

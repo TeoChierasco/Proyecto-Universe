@@ -21,8 +21,7 @@ Flujo de entrada a la aplicación:
 
 | Rol | Cómo se crea la cuenta |
 |---|---|
-| Alumno / Padre-Tutor | Registro libre. |
-| Profesor / Preceptor | Requiere **código de aprobación de Secretaría**. |
+| Alumno / Padre-Tutor / Profesor / Preceptor | Requiere **código de aprobación de Secretaría**. (Secretaría también puede crear cuentas de alumno directamente desde *Alumnos*.) |
 | Secretaría | Requiere **código de aprobación de Dirección**. |
 | Director | No se autorregistra: se crea desde la administración (Supabase). |
 
@@ -35,7 +34,7 @@ Flujo de entrada a la aplicación:
 - Comunicados / cartelera
 - Alumnos
 - Asistencia
-- Familia / hijos
+- Familia / hijos (el padre/tutor solicita el vínculo con el DNI del alumno y **Secretaría lo aprueba** antes de que pueda ver sus datos)
 - Inscripciones y cursos (esquemas SQL)
 - **Secretaría Pedagógica (1.ª etapa):** legajos y documentación de alumnos, cursos y divisiones (nómina y docentes por curso), profesores con materias, cursos y horas semanales
 
@@ -85,7 +84,7 @@ La aplicación queda disponible en `http://localhost:3000`.
 │   │   ├── asistencia.js     # control de asistencia
 │   │   ├── codigos.js        # códigos de aprobación
 │   │   ├── comunicados.js    # cartelera / avisos
-│   │   ├── familia.js        # vínculos familiares
+│   │   ├── familia.js        # vínculos familiares (solicitud + aprobación)
 │   │   ├── legajos.js        # legajos y documentación de alumnos
 │   │   ├── cursos.js         # nómina y docentes por curso
 │   │   ├── profesores.js     # asignaciones docentes (materia + curso + horas)
@@ -101,7 +100,9 @@ La aplicación queda disponible en `http://localhost:3000`.
 │   │   ├── comunicados.sql
 │   │   ├── cursos.sql
 │   │   ├── familia.sql
-│   │   └── inscripciones.sql
+│   │   ├── inscripciones.sql
+│   │   ├── secretaria.sql       # legajos, documentos y asignaciones docentes
+│   │   └── correcciones-01.sql  # códigos de padres y vínculos con aprobación
 │   └── scripts/              # Utilidades de verificación
 │
 └── frontend/             # Interfaz (HTML + CSS + JS vanilla)
@@ -120,6 +121,7 @@ La aplicación queda disponible en `http://localhost:3000`.
     ├── asistencia.html
     ├── asistencia-alumno.html
     ├── hijos.html
+    ├── vinculos.html
     ├── legajos.html
     ├── cursos.html
     ├── profesores.html
@@ -136,7 +138,10 @@ La aplicación queda disponible en `http://localhost:3000`.
    - `SUPABASE_ANON_KEY` (clave pública / anon)
    - `SUPABASE_SERVICE_KEY` (clave secreta / service_role — **solo backend**)
 3. Ejecutar los esquemas: Supabase → **SQL Editor** → pegar cada archivo de
-   `backend/db/` → **Run**.
+   `backend/db/` → **Run**, en este orden:
+   `schema.sql` → `academico.sql` → `cursos.sql` → `familia.sql` → `inscripciones.sql` →
+   `asistencia.sql` → `comunicados.sql` → `secretaria.sql` → `correcciones-01.sql`.
+   Todos son idempotentes: se pueden volver a correr sin duplicar datos.
 4. Verificar la conexión: `node backend/scripts/test-conexion.js`.
 
 **Importante:** nunca subas el archivo `.env` al repositorio. Ya está incluido en `.gitignore`.

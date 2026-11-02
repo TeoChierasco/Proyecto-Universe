@@ -861,3 +861,38 @@ h1 {
   .ficha-grilla, .detalle-columnas { grid-template-columns: 1fr; }
   .fila-legajo-cabecera { flex-direction: column; align-items: flex-start; }
 }
+
+/* ---------- Vínculos familiares ---------- */
+.pestanias { display: flex; gap: 0.5rem; margin-top: 1.6rem; flex-wrap: wrap; justify-content: center; }
+.pestania {
+  cursor: pointer; font-family: inherit; font-size: 0.9rem; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  padding: 0.55rem 1.1rem; border-radius: 999px;
+  border: 1px solid var(--borde); background: var(--superficie); color: var(--texto-suave);
+  transition: color var(--transicion), border-color var(--transicion), background var(--transicion);
+}
+.pestania:hover { border-color: var(--verde); color: var(--verde-osc); }
+.pestania.activa { background: var(--verde-tenue); border-color: var(--verde); color: var(--verde-osc); }
+.pestania-num {
+  min-width: 1.4rem; padding: 0.05rem 0.4rem; border-radius: 999px;
+  background: var(--neutro-bg); color: var(--texto-suave); font-size: 0.75rem; text-align: center;
+}
+.pestania.activa .pestania-num { background: var(--verde); color: #fff; }
+:root[data-tema="oscuro"] .pestania.activa .pestania-num { color: #10170d; }
+
+.vinculo-personas { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; }
+.vinculo-personas .sub-titulo { margin-bottom: 0.1rem; }
+.vinculo-flecha { font-size: 1.3rem; color: var(--verde); font-weight: 700; }
+.vinculo-fechas { margin-top: 0.6rem; }
+.vinculo-fechas a { color: var(--verde-osc); font-weight: 600; }
+.btn-mini.btn-aprobar { color: var(--verde-osc); border-color: var(--verde-claro); background: var(--verde-tenue); }
+
+.estado-vinculo {
+  display: inline-block; margin-left: 0.4rem; vertical-align: middle;
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 0.15rem 0.55rem; border-radius: 999px;
+}
+.estado-vinculo.pendiente { background: #fff3d9; color: #9a6a00; border: 1px solid #f0cf8a; }
+.estado-vinculo.rechazado { background: var(--error-bg); color: var(--peligro); border: 1px solid var(--error-borde); }
+:root[data-tema="oscuro"] .estado-vinculo.pendiente { background: rgba(240,184,64,0.14); color: #f0c060; border-color: rgba(240,184,64,0.35); }
+.fila-hijo { text-align: left; }

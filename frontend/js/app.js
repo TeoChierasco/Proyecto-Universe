@@ -43,7 +43,7 @@ const App = {
       { icono: 'calendar',  titulo: 'Horarios',         desc: 'Tu horario semanal de clases.' },
     ],
     padre: [
-      { icono: 'users',     titulo: 'Mis hijos/as',     desc: 'Vinculá a tus hijos y seguí su curso.', link: '/hijos.html' },
+      { icono: 'users',     titulo: 'Mis hijos/as',     desc: 'Solicitá el vínculo con tus hijos y seguí su curso.', link: '/hijos.html' },
       { icono: 'file',      titulo: 'Calificaciones',   desc: 'Las notas de tus hijos/as.' },
       { icono: 'clipboard', titulo: 'Asistencia',       desc: 'Inasistencias y avisos de tus hijos/as.', link: '/hijos.html' },
       { icono: 'megaphone', titulo: 'Comunicados',      desc: 'Avisos del instituto.', link: '/comunicados.html' },
@@ -63,6 +63,7 @@ const App = {
       { icono: 'folder',    titulo: 'Legajos',          desc: 'Datos de cada alumno y documentación pendiente.', link: '/legajos.html' },
       { icono: 'building',  titulo: 'Cursos y divisiones', desc: 'Nómina de alumnos y docentes de cada curso.', link: '/cursos.html' },
       { icono: 'briefcase', titulo: 'Profesores',       desc: 'Docentes, materias, cursos y horas.', link: '/profesores.html' },
+      { icono: 'family',    titulo: 'Vínculos familiares', desc: 'Aprobá las solicitudes de padres y tutores.', link: '/vinculos.html' },
       { icono: 'clipboard', titulo: 'Asistencia',       desc: 'Ver la asistencia de los alumnos y avisar a familias.', link: '/asistencia.html' },
       { icono: 'users',     titulo: 'Usuarios',         desc: 'Cuentas registradas y sus roles.', link: '/usuarios.html' },
       { icono: 'book',      titulo: 'Plan de estudios', desc: 'Materias por año y divisiones.', link: '/plan.html' },
@@ -75,6 +76,7 @@ const App = {
       { icono: 'folder',    titulo: 'Legajos',          desc: 'Datos de cada alumno y documentación pendiente.', link: '/legajos.html' },
       { icono: 'building',  titulo: 'Cursos y divisiones', desc: 'Nómina de alumnos y docentes de cada curso.', link: '/cursos.html' },
       { icono: 'briefcase', titulo: 'Profesores',       desc: 'Docentes, materias, cursos y horas.', link: '/profesores.html' },
+      { icono: 'family',    titulo: 'Vínculos familiares', desc: 'Aprobá las solicitudes de padres y tutores.', link: '/vinculos.html' },
       { icono: 'clipboard', titulo: 'Asistencia',       desc: 'Ver la asistencia de los alumnos.', link: '/asistencia.html' },
       { icono: 'users',     titulo: 'Usuarios',         desc: 'Cuentas registradas y sus roles.', link: '/usuarios.html' },
       { icono: 'book',      titulo: 'Plan de estudios', desc: 'Materias por año del secundario.', link: '/plan.html' },
@@ -100,6 +102,7 @@ const App = {
     edit:      '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
     cap:       '<path d="M22 10 12 5 2 10l10 5z"/><path d="M6 12v5c0 1 2.5 3 6 3s6-2 6-3v-5"/><path d="M22 10v5"/>',
     folder:    '<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/>',
+    family:    '<circle cx="8" cy="6" r="3"/><circle cx="17" cy="8" r="2.5"/><path d="M2 21v-3a5 5 0 0 1 10 0v3"/><path d="M13 21v-2.5a4 4 0 0 1 8 0V21"/>',
     building:  '<rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M8 10h.01"/><path d="M16 10h.01"/><path d="M8 14h.01"/><path d="M16 14h.01"/>',
     wrench:    '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
     moon:      '<path d="M12 3a6.4 6.4 0 0 0 9 9 9 9 0 1 1-9-9z"/>',
@@ -140,9 +143,10 @@ const App = {
   },
 
   // ---------- Sesión (post-login) ----------
-  guardarSesion(token, usuario) {
+  guardarSesion(token, usuario, refreshToken) {
     localStorage.setItem('iu_token', token || '');
     localStorage.setItem('iu_usuario', JSON.stringify(usuario || {}));
+    if (refreshToken) localStorage.setItem('iu_refresh', refreshToken);
   },
 
   obtenerToken() { return localStorage.getItem('iu_token'); },
@@ -150,6 +154,39 @@ const App = {
   cerrarSesion() {
     localStorage.removeItem('iu_token');
     localStorage.removeItem('iu_usuario');
+    localStorage.removeItem('iu_refresh');
+  },
+
+  /**
+   * Pide un token nuevo con el refresh token guardado.
+   * Si varias llamadas fallan a la vez, comparten una sola renovación
+   * (el refresh token de Supabase sirve una sola vez).
+   * Devuelve el token nuevo o null si la sesión ya no se puede renovar.
+   */
+  renovarSesion() {
+    if (this._renovando) return this._renovando;
+    const refreshToken = localStorage.getItem('iu_refresh');
+    if (!refreshToken) return Promise.resolve(null);
+
+    this._renovando = (async () => {
+      try {
+        const r = await App._fetchOriginal('/api/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data.ok || !data.token) return null;
+        localStorage.setItem('iu_token', data.token);
+        localStorage.setItem('iu_refresh', data.refreshToken);
+        return data.token;
+      } catch (e) {
+        return null;
+      } finally {
+        setTimeout(() => { App._renovando = null; }, 0);
+      }
+    })();
+    return this._renovando;
   },
 
   /**
@@ -390,6 +427,28 @@ const App = {
     }
     document.body.prepend(capa);
   },
+};
+
+/**
+ * Renovación automática de la sesión.
+ * Envuelve fetch: si una llamada a /api/ responde 401 (token vencido),
+ * renueva la sesión una vez y repite la llamada con el token nuevo.
+ * Así ninguna pantalla necesita ocuparse del vencimiento.
+ */
+App._fetchOriginal = window.fetch.bind(window);
+window.fetch = async (recurso, opciones = {}) => {
+  const respuesta = await App._fetchOriginal(recurso, opciones);
+  const url = typeof recurso === 'string' ? recurso : recurso.url;
+  const esApi = url.startsWith('/api/') || url.startsWith(location.origin + '/api/');
+  const esAuthPublica = /\/api\/auth\/(login|refresh|register|recuperar|restablecer-password)/.test(url);
+  if (respuesta.status !== 401 || !esApi || esAuthPublica) return respuesta;
+
+  const token = await App.renovarSesion();
+  if (!token) return respuesta;
+
+  const headers = new Headers(opciones.headers || {});
+  headers.set('Authorization', `Bearer ${token}`);
+  return App._fetchOriginal(recurso, { ...opciones, headers });
 };
 
 document.addEventListener('DOMContentLoaded', () => {

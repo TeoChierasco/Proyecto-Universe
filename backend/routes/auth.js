@@ -116,6 +116,33 @@ router.get('/me', async (req, res) => {
 });
 
 // ------------------------------------------------------------
+//  POST /api/auth/refresh — renueva la sesión con el refresh token.
+//  El access token de Supabase dura ~1 hora; el frontend llama acá
+//  automáticamente cuando recibe un 401, sin que el usuario lo note.
+//  (Supabase rota el refresh token: cada uno sirve una sola vez.)
+// ------------------------------------------------------------
+router.post('/refresh', async (req, res) => {
+  const refreshToken = (req.body && req.body.refreshToken) || '';
+  if (!refreshToken || !hasAdmin) {
+    return res.status(401).json({ ok: false, error: 'Sesión vencida. Ingresá de nuevo.' });
+  }
+  try {
+    const cliente = nuevoClientePublico();
+    const { data, error } = await cliente.auth.refreshSession({ refresh_token: refreshToken });
+    if (error || !data.session) {
+      return res.status(401).json({ ok: false, error: 'Sesión vencida. Ingresá de nuevo.' });
+    }
+    return res.json({
+      ok: true,
+      token: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+    });
+  } catch (e) {
+    return res.status(401).json({ ok: false, error: 'Sesión vencida. Ingresá de nuevo.' });
+  }
+});
+
+// ------------------------------------------------------------
 //  PATCH /api/auth/perfil — el usuario edita sus propios datos.
 //  (El rol y el nivel NO se pueden cambiar desde acá: los gestiona
 //   Dirección/Secretaría, para que nadie se ascienda a sí mismo.)
@@ -292,9 +319,19 @@ router.post('/register', async (req, res) => {
     });
   }
 
+  // Si algo falla después de reservar el código, se libera para que pueda volver a usarse.
+  let codigoReservado = null;
+  const liberarCodigo = async () => {
+    if (!codigoReservado) return;
+    await supabaseAdmin
+      .from('codigos_aprobacion')
+      .update({ usado: false, usado_por: null })
+      .eq('id', codigoReservado);
+    codigoReservado = null;
+  };
+
   try {
-    // 1. Validar el código de aprobación (si el rol lo requiere), sin consumirlo aún.
-    let codigoRow = null;
+    // 1. Validar el código de aprobación (si el rol lo requiere).
     if (ROLES_CON_CODIGO.includes(rol)) {
       const { data: cod, error: codError } = await supabaseAdmin
         .from('codigos_aprobacion')
@@ -312,10 +349,24 @@ router.post('/register', async (req, res) => {
       if (cod.expira_en && new Date(cod.expira_en) < new Date()) {
         return res.status(400).json({ ok: false, error: 'Este código de aprobación está vencido.' });
       }
-      codigoRow = cod;
+
+      // 2. Reservar el código ANTES de crear la cuenta. El update solo afecta
+      //    la fila si todavía está sin usar (usado = false): si dos personas
+      //    se registran a la vez con el mismo código, solo una lo consigue.
+      const { data: reservado, error: reservaError } = await supabaseAdmin
+        .from('codigos_aprobacion')
+        .update({ usado: true })
+        .eq('id', cod.id)
+        .eq('usado', false)
+        .select('id');
+      if (reservaError) throw reservaError;
+      if (!reservado || reservado.length === 0) {
+        return res.status(400).json({ ok: false, error: 'Este código de aprobación ya fue utilizado.' });
+      }
+      codigoReservado = cod.id;
     }
 
-    // 2. Crear el usuario en Supabase Auth (email ya confirmado).
+    // 3. Crear el usuario en Supabase Auth (email ya confirmado).
     const { data: creado, error: crearError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -323,6 +374,7 @@ router.post('/register', async (req, res) => {
       user_metadata: { nombre, apellido, rol, nivel },
     });
     if (crearError) {
+      await liberarCodigo();
       const msg = /already been registered|already exists|duplicate/i.test(crearError.message || '')
         ? 'Ya existe una cuenta con ese email.'
         : 'No pudimos crear la cuenta. Revisá los datos e intentá de nuevo.';
@@ -330,27 +382,24 @@ router.post('/register', async (req, res) => {
     }
     const userId = creado.user.id;
 
-    // 3. Crear el perfil con el rol correcto.
+    // 4. Crear el perfil con el rol correcto.
     const { error: perfilError } = await supabaseAdmin.from('perfiles').insert({
       id: userId, nombre, apellido, email, rol, nivel, documento,
     });
     if (perfilError) {
       // Evitar cuentas huérfanas si falla el perfil.
       await supabaseAdmin.auth.admin.deleteUser(userId);
+      await liberarCodigo();
       if (/duplicate|unique/i.test(perfilError.message || '')) {
         return res.status(400).json({ ok: false, error: 'Ya existe un alumno con ese documento.' });
       }
       throw perfilError;
     }
 
-    // 4. Consumir el código (marcarlo como usado). El filtro usado=false evita
-    //    que dos registros simultáneos reutilicen el mismo código.
-    if (codigoRow) {
-      await supabaseAdmin
-        .from('codigos_aprobacion')
-        .update({ usado: true, usado_por: userId })
-        .eq('id', codigoRow.id)
-        .eq('usado', false);
+    // 5. Registrar quién usó el código.
+    if (codigoReservado) {
+      await supabaseAdmin.from('codigos_aprobacion').update({ usado_por: userId }).eq('id', codigoReservado);
+      codigoReservado = null;
     }
 
     return res.status(201).json({
@@ -359,6 +408,7 @@ router.post('/register', async (req, res) => {
       usuario: { id: userId, email, rol, nivel },
     });
   } catch (e) {
+    await liberarCodigo().catch(() => {});
     return res.status(500).json({ ok: false, error: 'Ocurrió un error al crear la cuenta. Probá de nuevo en un momento.' });
   }
 });

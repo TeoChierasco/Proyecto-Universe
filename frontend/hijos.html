@@ -19,19 +19,30 @@
       <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
         <div class="panel-cabecera">
           <h1>Mis <span class="destello">hijos/as</span></h1>
-          <p class="subtitulo" id="subtitulo">Vinculá a tus hijos con el documento (DNI) que cargaron en el instituto</p>
+          <p class="subtitulo" id="subtitulo">Solicitá el vínculo con el DNI de tu hijo/a. Secretaría lo revisa y lo aprueba.</p>
         </div>
 
         <!-- Agregar hijo por documento -->
         <form class="tarjeta-form" id="form-agregar" hidden>
           <h2 class="titulo-tarjeta">Agregar un hijo/a</h2>
-          <div class="campo">
-            <label for="documento">Documento (DNI) del alumno</label>
-            <input type="text" id="documento" placeholder="Ej: 45123678" required />
-            <p class="ayuda-campo">Es el DNI que el alumno (o la Secretaría) cargó en su cuenta.</p>
+          <div class="fila-doble">
+            <div class="campo">
+              <label for="documento">Documento (DNI) del alumno</label>
+              <input type="text" id="documento" placeholder="Ej: 45123678" required />
+            </div>
+            <div class="campo">
+              <label for="parentesco">Parentesco</label>
+              <select id="parentesco">
+                <option value="Madre">Madre</option>
+                <option value="Padre">Padre</option>
+                <option value="Tutor/a">Tutor/a</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
           </div>
+          <p class="ayuda-campo" style="margin-bottom:1rem;">Por seguridad, Secretaría verifica cada solicitud antes de que puedas ver los datos del alumno.</p>
           <div class="mensaje-form" id="mensaje" role="alert"></div>
-          <button type="submit" class="boton boton-primario" id="btn-agregar">Vincular</button>
+          <button type="submit" class="boton boton-primario" id="btn-agregar">Enviar solicitud</button>
         </form>
 
         <div class="lista-usuarios" id="lista">
@@ -67,17 +78,33 @@
         cont.innerHTML = '<p class="cargando">Todavía no vinculaste a ningún hijo/a.</p>';
         return;
       }
-      cont.innerHTML = hijos.map((h) => `
-        <div class="fila-usuario">
+      const ESTADO = {
+        pendiente: '<span class="estado-vinculo pendiente">Pendiente de aprobación</span>',
+        rechazado: '<span class="estado-vinculo rechazado">Rechazada por Secretaría</span>',
+        aprobado: '',
+      };
+      cont.innerHTML = hijos.map((h) => {
+        const aprobado = h.estado === 'aprobado';
+        const titulo = aprobado
+          ? `${esc(h.apellido)}, ${esc(h.nombre)}`
+          : `Solicitud · DNI terminado en ${esc(h.dniFinal)}`;
+        const detalle = aprobado
+          ? (h.curso ? 'Curso: ' + esc(h.curso) : 'Sin curso asignado')
+          : h.estado === 'rechazado'
+            ? 'Si creés que es un error, acercate a Secretaría o volvé a enviar la solicitud.'
+            : 'Secretaría va a verificar el vínculo. Mientras tanto no se muestran datos del alumno.';
+        return `
+        <div class="fila-usuario fila-hijo">
           <div class="fila-info">
-            <span class="usuario-nombre-lista">${esc(h.apellido)}, ${esc(h.nombre)}</span>
-            <span class="codigo-meta">${h.curso ? 'Curso: ' + esc(h.curso) : 'Sin curso asignado'}</span>
+            <span class="usuario-nombre-lista">${titulo} ${ESTADO[h.estado] || ''}</span>
+            <span class="codigo-meta">${h.parentesco ? esc(h.parentesco) + ' · ' : ''}${detalle}</span>
           </div>
           <div class="fila-acciones">
-            <a class="btn-mini" href="/asistencia-alumno.html?id=${h.id}">Ver asistencia</a>
-            <button class="btn-mini peligro" data-quitar="${h.id}">Quitar</button>
+            ${aprobado ? `<a class="btn-mini" href="/asistencia-alumno.html?id=${h.id}">Ver asistencia</a>` : ''}
+            <button class="btn-mini peligro" data-quitar="${h.id}">${aprobado ? 'Quitar' : 'Cancelar solicitud'}</button>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
 
       cont.querySelectorAll('[data-quitar]').forEach((b) =>
         b.addEventListener('click', () => quitar(b.dataset.quitar)));
@@ -112,16 +139,17 @@
       const documento = document.getElementById('documento').value.trim();
       if (!documento) { App.mostrarMensaje(mensaje, 'Ingresá el documento del alumno.', 'error'); return; }
 
-      btn.disabled = true; btn.textContent = 'Vinculando…';
+      btn.disabled = true; btn.textContent = 'Enviando…';
       try {
-        const data = await api('POST', '/api/familia/hijos', { documento });
+        const parentesco = document.getElementById('parentesco').value;
+        const data = await api('POST', '/api/familia/hijos', { documento, parentesco });
         App.mostrarMensaje(mensaje, data.message, 'exito');
         document.getElementById('documento').value = '';
         await cargar();
       } catch (error) {
         App.mostrarMensaje(mensaje, error.message, 'error');
       } finally {
-        btn.disabled = false; btn.textContent = 'Vincular';
+        btn.disabled = false; btn.textContent = 'Enviar solicitud';
       }
     });
 

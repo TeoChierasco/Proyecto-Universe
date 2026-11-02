@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Vínculos familiares</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1>Vínculos <span class="destello">familiares</span></h1>
+          <p class="subtitulo" id="subtitulo">Solicitudes de padres y tutores para ver los datos de un alumno</p>
+        </div>
+
+        <div class="aviso-info" id="aviso">
+          Antes de aprobar, verificá que el adulto sea realmente madre, padre o tutor del alumno
+          (por ejemplo, con la documentación del legajo).
+        </div>
+
+        <div class="pestanias" id="pestanias" hidden>
+          <button class="pestania activa" data-estado="pendiente">Pendientes <span class="pestania-num" id="n-pendiente">0</span></button>
+          <button class="pestania" data-estado="aprobado">Aprobados <span class="pestania-num" id="n-aprobado">0</span></button>
+          <button class="pestania" data-estado="rechazado">Rechazados <span class="pestania-num" id="n-rechazado">0</span></button>
+        </div>
+
+        <div class="barra-busqueda" id="barra" hidden>
+          <input type="text" class="input-mini" id="buscar" placeholder="Buscar por alumno, adulto, email o DNI…" />
+        </div>
+
+        <div class="lista-usuarios lista-ancha" id="lista">
+          <p class="cargando">Cargando solicitudes…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let estado = { vinculos: [], pestania: 'pendiente' };
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    function fechaCorta(iso) {
+      if (!iso) return '';
+      const [a, m, d] = iso.slice(0, 10).split('-');
+      return `${d}/${m}/${a}`;
+    }
+
+    async function api(metodo, ruta, body) {
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${App.obtenerToken()}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function renderContadores() {
+      ['pendiente', 'aprobado', 'rechazado'].forEach((e) => {
+        document.getElementById(`n-${e}`).textContent = estado.vinculos.filter((v) => v.estado === e).length;
+      });
+      document.querySelectorAll('.pestania').forEach((b) =>
+        b.classList.toggle('activa', b.dataset.estado === estado.pestania));
+    }
+
+    function renderLista() {
+      const filtro = (document.getElementById('buscar').value || '').toLowerCase().trim();
+      const cont = document.getElementById('lista');
+
+      const visibles = estado.vinculos.filter((v) => {
+        if (v.estado !== estado.pestania) return false;
+        if (!filtro) return true;
+        return [v.alumno.nombre, v.alumno.apellido, v.alumno.documento, v.padre.nombre, v.padre.apellido, v.padre.email]
+          .join(' ').toLowerCase().includes(filtro);
+      });
+
+      if (!visibles.length) {
+        const vacio = { pendiente: 'No hay solicitudes pendientes. ¡Todo al día!', aprobado: 'No hay vínculos aprobados.', rechazado: 'No hay solicitudes rechazadas.' };
+        cont.innerHTML = `<p class="cargando">${filtro ? 'Nada coincide con la búsqueda.' : vacio[estado.pestania]}</p>`;
+        return;
+      }
+
+      cont.innerHTML = visibles.map((v) => `
+        <div class="fila-legajo">
+          <div class="fila-legajo-cabecera">
+            <div class="vinculo-personas">
+              <div class="fila-info">
+                <span class="sub-titulo">${esc(v.parentesco || 'Adulto responsable')}</span>
+                <span class="usuario-nombre-lista">${esc(v.padre.apellido)}, ${esc(v.padre.nombre)}</span>
+                <span class="codigo-meta">${esc(v.padre.email)}</span>
+              </div>
+              <span class="vinculo-flecha" aria-hidden="true">→</span>
+              <div class="fila-info">
+                <span class="sub-titulo">Alumno/a</span>
+                <span class="usuario-nombre-lista">${esc(v.alumno.apellido)}, ${esc(v.alumno.nombre)}</span>
+                <span class="codigo-meta">DNI ${esc(v.alumno.documento || '—')} · ${esc(v.alumno.curso || 'Sin curso')}</span>
+              </div>
+            </div>
+            <div class="fila-acciones">
+              ${v.estado !== 'aprobado' ? `<button class="btn-mini btn-aprobar" data-accion="aprobado" data-id="${v.id}">Aprobar</button>` : ''}
+              ${v.estado === 'pendiente' ? `<button class="btn-mini peligro" data-accion="rechazado" data-id="${v.id}">Rechazar</button>` : ''}
+              ${v.estado !== 'pendiente' ? `<button class="btn-mini peligro" data-accion="eliminar" data-id="${v.id}">Eliminar</button>` : ''}
+            </div>
+          </div>
+          <div class="vinculo-fechas codigo-meta">
+            Solicitado el ${fechaCorta(v.creadoEn)}${v.revisadoEn ? ` · revisado el ${fechaCorta(v.revisadoEn)}` : ''}
+            · <a href="/legajos.html">ver legajos</a>
+          </div>
+        </div>`).join('');
+
+      cont.querySelectorAll('[data-accion]').forEach((b) =>
+        b.addEventListener('click', () => accion(Number(b.dataset.id), b.dataset.accion)));
+    }
+
+    async function accion(id, que) {
+      try {
+        if (que === 'eliminar') {
+          await api('DELETE', `/api/familia/vinculos/${id}`);
+          estado.vinculos = estado.vinculos.filter((v) => v.id !== id);
+          App.toast('Vínculo eliminado');
+        } else {
+          const data = await api('PATCH', `/api/familia/vinculos/${id}`, { estado: que });
+          const v = estado.vinculos.find((x) => x.id === id);
+          if (v) { v.estado = que; v.revisadoEn = new Date().toISOString(); }
+          App.toast(data.message);
+        }
+        renderContadores();
+        renderLista();
+      } catch (error) { App.toast(error.message); }
+    }
+
+    async function cargar() {
+      try {
+        const data = await api('GET', '/api/familia/vinculos');
+        estado.vinculos = data.vinculos;
+        document.getElementById('pestanias').hidden = false;
+        document.getElementById('barra').hidden = false;
+        renderContadores();
+        renderLista();
+      } catch (error) {
+        document.getElementById('lista').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    document.querySelectorAll('.pestania').forEach((b) => b.addEventListener('click', () => {
+      estado.pestania = b.dataset.estado;
+      renderContadores();
+      renderLista();
+    }));
+    document.getElementById('buscar').addEventListener('input', renderLista);
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'secretaria' && usuario.rol !== 'director') {
+        document.getElementById('lista').innerHTML = '<p class="cargando">Tu rol no gestiona vínculos familiares.</p>';
+        return;
+      }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

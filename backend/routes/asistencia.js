@@ -22,7 +22,7 @@ async function puedeVerAlumno(req, alumnoId) {
   if (VER.includes(rol)) return true;
   if (rol === 'padre') {
     const { data } = await supabaseAdmin.from('vinculos').select('id')
-      .eq('padre_id', req.userId).eq('alumno_id', alumnoId).maybeSingle();
+      .eq('padre_id', req.userId).eq('alumno_id', alumnoId).eq('estado', 'aprobado').maybeSingle();
     return !!data;
   }
   if (rol === 'alumno') return alumnoId === req.userId;

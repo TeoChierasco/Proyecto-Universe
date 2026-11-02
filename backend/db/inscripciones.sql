@@ -30,7 +30,8 @@ grant select on table public.inscripciones to authenticated;
 --  Códigos de aprobación también para ALUMNOS
 --  Ahora el alumno que se registra solo necesita un código emitido
 --  por Secretaría (para validar que sea una cuenta real).
+--  (Incluye 'padre', que se agregó en familia.sql.)
 -- ============================================================
 alter table public.codigos_aprobacion drop constraint if exists codigos_aprobacion_rol_destino_check;
 alter table public.codigos_aprobacion add constraint codigos_aprobacion_rol_destino_check
-  check (rol_destino in ('alumno', 'profesor', 'preceptor', 'secretaria'));
+  check (rol_destino in ('alumno', 'padre', 'profesor', 'preceptor', 'secretaria'));
