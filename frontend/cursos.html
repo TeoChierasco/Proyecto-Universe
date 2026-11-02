@@ -116,7 +116,7 @@
               <ol class="nomina">
                 ${alumnos.map((a) => `
                   <li>
-                    <span>${esc(a.apellido)}, ${esc(a.nombre)}</span>
+                    <a class="nomina-enlace" href="/boletin.html?id=${a.id}" title="Ver boletín">${esc(a.apellido)}, ${esc(a.nombre)}</a>
                     <span class="nomina-doc ${a.legajoCompleto ? 'ok' : ''}" title="Documentación entregada">
                       ${a.documentosCompletos}/${totalDocumentos}
                     </span>
@@ -131,7 +131,10 @@
                 ${materias.map((m) => `
                   <li class="${m.profesor ? '' : 'sin-docente'}">
                     <span class="md-materia">${esc(m.nombre)}</span>
-                    <span class="md-profesor">${m.profesor ? esc(m.profesor) + (m.horas ? ` · ${m.horas} h` : '') : 'Sin docente'}</span>
+                    <span class="md-profesor">
+                      ${m.profesor ? esc(m.profesor) + (m.horas ? ` · ${m.horas} h` : '') : 'Sin docente'}
+                      ${m.asignacionId ? `<a class="md-notas" href="/notas.html?asignacion=${m.asignacionId}">notas</a>` : ''}
+                    </span>
                   </li>`).join('')}
               </ul>` : '<p class="anio-proximamente">No hay materias cargadas para este año.</p>'}
           </div>

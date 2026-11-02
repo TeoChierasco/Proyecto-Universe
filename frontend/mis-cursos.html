@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Mis cursos</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1>Mis <span class="destello">cursos</span></h1>
+          <p class="subtitulo" id="subtitulo">Las materias y cursos que dictás</p>
+        </div>
+
+        <div class="contadores" id="contadores" hidden>
+          <div class="contador"><span class="num" id="c-materias">0</span><span class="cap">Materias</span></div>
+          <div class="contador"><span class="num" id="c-alumnos">0</span><span class="cap">Alumnos</span></div>
+          <div class="contador"><span class="num" id="c-horas">0</span><span class="cap">Horas / semana</span></div>
+        </div>
+
+        <div class="cursos-docente lista-ancha" id="lista">
+          <p class="cargando">Cargando tus cursos…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    async function api(ruta) {
+      const r = await fetch(ruta, { headers: { Authorization: `Bearer ${App.obtenerToken()}` } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function render({ asignaciones, periodos, ciclo }) {
+      const cont = document.getElementById('lista');
+      document.getElementById('subtitulo').textContent = `Ciclo lectivo ${ciclo}`;
+
+      if (!asignaciones.length) {
+        cont.innerHTML = '<p class="cargando">Todavía no tenés materias asignadas. Secretaría las asigna desde <strong>Profesores</strong>.</p>';
+        return;
+      }
+
+      document.getElementById('contadores').hidden = false;
+      document.getElementById('c-materias').textContent = asignaciones.length;
+      document.getElementById('c-alumnos').textContent = asignaciones.reduce((s, a) => s + a.alumnos, 0);
+      document.getElementById('c-horas').textContent = asignaciones.reduce((s, a) => s + (a.horas || 0), 0);
+
+      cont.innerHTML = asignaciones.map((a) => `
+        <div class="tarjeta-docente">
+          <div class="td-cabecera">
+            <span class="curso-nombre">${esc(a.curso)}</span>
+            ${a.horas ? `<span class="resumen-horas">${a.horas} h/sem</span>` : ''}
+          </div>
+          <span class="td-materia">${esc(a.materia)}</span>
+          <span class="curso-dato">${a.alumnos} alumno${a.alumnos === 1 ? '' : 's'}</span>
+          <div class="td-periodos">
+            ${periodos.map((p) => {
+              const n = a.cargadas[p.id] || 0;
+              const clase = a.alumnos && n >= a.alumnos ? 'completo' : n ? 'parcial' : '';
+              return `<span class="td-periodo ${clase}" title="${esc(p.nombre)}: ${n} de ${a.alumnos} notas cargadas">${esc(p.corto)} <strong>${n}/${a.alumnos}</strong></span>`;
+            }).join('')}
+          </div>
+          <a class="boton boton-primario td-boton" href="/notas.html?asignacion=${a.id}">Cargar notas</a>
+        </div>`).join('');
+    }
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'profesor') {
+        document.getElementById('lista').innerHTML = '<p class="cargando">Esta sección es para profesores.</p>';
+        return;
+      }
+      try {
+        render(await api('/api/calificaciones/mis-cursos'));
+      } catch (error) {
+        document.getElementById('lista').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    })();
+  </script>
+</body>
+</html>

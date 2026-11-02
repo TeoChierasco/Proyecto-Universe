@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Cargar notas</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/mis-cursos.html" class="enlace-volver" id="volver">← Volver a mis cursos</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1 id="titulo">Cargar <span class="destello">notas</span></h1>
+          <p class="subtitulo" id="subtitulo"></p>
+        </div>
+
+        <div class="aviso-info" id="ayuda" hidden>
+          Escribí notas del 1 al 10 (podés usar decimales, ej. 7,5). Dejá vacío para borrar.
+          Los cambios se guardan cuando tocás <strong>Guardar cambios</strong>.
+        </div>
+
+        <div class="planilla-contenedor lista-ancha" id="contenido">
+          <p class="cargando">Cargando planilla…</p>
+        </div>
+
+        <div class="barra-guardar" id="barra-guardar" hidden>
+          <span id="pendientes">Sin cambios</span>
+          <button class="boton boton-primario" id="btn-guardar" disabled>Guardar cambios</button>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const asignacion = new URLSearchParams(location.search).get('asignacion');
+    let datos = null;
+    const cambios = new Map(); // "alumnoId|periodo" → nota (string) o null
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    const fmt = (n) => (n == null ? '—' : String(n).replace('.', ','));
+
+    async function api(metodo, ruta, body) {
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${App.obtenerToken()}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function parseNota(txt) {
+      const t = String(txt).trim().replace(',', '.');
+      if (t === '') return null;
+      const n = Number(t);
+      return Number.isFinite(n) && n >= 1 && n <= 10 ? Math.round(n * 100) / 100 : NaN;
+    }
+
+    function render() {
+      const { alumnos, periodos, materia, curso, ciclo, profesor, notaAprobacion } = datos;
+      document.getElementById('titulo').innerHTML = `${esc(materia)} · <span class="destello">${esc(curso)}</span>`;
+      document.getElementById('subtitulo').textContent =
+        `Ciclo ${ciclo}${profesor ? ' · Prof. ' + profesor : ''} · aprueba con ${notaAprobacion}`;
+
+      const cont = document.getElementById('contenido');
+      if (!alumnos.length) {
+        cont.innerHTML = '<p class="cargando">Este curso todavía no tiene alumnos inscriptos.</p>';
+        return;
+      }
+      document.getElementById('ayuda').hidden = false;
+      document.getElementById('barra-guardar').hidden = false;
+
+      cont.innerHTML = `
+        <table class="planilla">
+          <thead>
+            <tr>
+              <th class="col-alumno">Alumno/a</th>
+              ${periodos.map((p) => `<th title="${esc(p.nombre)}">${esc(p.corto)}</th>`).join('')}
+              <th>Promedio</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${alumnos.map((a, i) => `
+              <tr data-alumno="${a.id}">
+                <td class="col-alumno"><span class="planilla-num">${i + 1}</span>${esc(a.apellido)}, ${esc(a.nombre)}</td>
+                ${periodos.map((p) => `
+                  <td><input class="input-nota" inputmode="decimal" maxlength="5"
+                       data-alumno="${a.id}" data-periodo="${p.id}"
+                       value="${a.notas[p.id] != null ? fmt(a.notas[p.id]) : ''}"
+                       aria-label="${esc(a.apellido)} — ${esc(p.nombre)}" /></td>`).join('')}
+                <td class="col-promedio" id="prom-${a.id}"></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+
+      alumnos.forEach((a) => actualizarPromedio(a.id));
+
+      cont.querySelectorAll('.input-nota').forEach((inp) => {
+        pintar(inp);
+        inp.addEventListener('input', () => {
+          const clave = `${inp.dataset.alumno}|${inp.dataset.periodo}`;
+          const a = datos.alumnos.find((x) => x.id === inp.dataset.alumno);
+          const original = a.notas[inp.dataset.periodo];
+          const nueva = parseNota(inp.value);
+          if (nueva === (original == null ? null : original)) cambios.delete(clave);
+          else cambios.set(clave, inp.value.trim() === '' ? null : inp.value.trim());
+          pintar(inp);
+          actualizarPromedio(inp.dataset.alumno);
+          actualizarBarra();
+        });
+        // Enter / flechas para moverse como en una planilla.
+        inp.addEventListener('keydown', (e) => {
+          const todos = [...cont.querySelectorAll('.input-nota')];
+          const i = todos.indexOf(inp);
+          const cols = datos.periodos.length;
+          let destino = null;
+          if (e.key === 'Enter' || e.key === 'ArrowDown') destino = todos[i + cols];
+          if (e.key === 'ArrowUp') destino = todos[i - cols];
+          if (destino) { e.preventDefault(); destino.focus(); destino.select(); }
+        });
+      });
+    }
+
+    function pintar(inp) {
+      const n = parseNota(inp.value);
+      inp.classList.toggle('invalida', Number.isNaN(n));
+      inp.classList.toggle('desaprobada', typeof n === 'number' && n < datos.notaAprobacion);
+      inp.classList.toggle('modificada', cambios.has(`${inp.dataset.alumno}|${inp.dataset.periodo}`));
+    }
+
+    function actualizarPromedio(alumnoId) {
+      const valores = [...document.querySelectorAll(`.input-nota[data-alumno="${alumnoId}"]`)]
+        .map((i) => parseNota(i.value)).filter((n) => typeof n === 'number' && !Number.isNaN(n));
+      const celda = document.getElementById(`prom-${alumnoId}`);
+      if (!valores.length) { celda.textContent = '—'; celda.className = 'col-promedio'; return; }
+      const p = Math.round((valores.reduce((s, n) => s + n, 0) / valores.length) * 100) / 100;
+      celda.textContent = fmt(p);
+      celda.className = 'col-promedio ' + (p < datos.notaAprobacion ? 'desaprobada' : 'aprobada');
+    }
+
+    function actualizarBarra() {
+      const invalidas = document.querySelectorAll('.input-nota.invalida').length;
+      const n = cambios.size;
+      document.getElementById('pendientes').textContent = invalidas
+        ? `${invalidas} nota${invalidas === 1 ? '' : 's'} no válida${invalidas === 1 ? '' : 's'} (1 a 10)`
+        : n ? `${n} cambio${n === 1 ? '' : 's'} sin guardar` : 'Sin cambios';
+      document.getElementById('barra-guardar').classList.toggle('con-cambios', n > 0);
+      document.getElementById('btn-guardar').disabled = !n || invalidas > 0;
+    }
+
+    async function guardar() {
+      const btn = document.getElementById('btn-guardar');
+      const notas = [...cambios.entries()].map(([clave, nota]) => {
+        const [alumnoId, periodo] = clave.split('|');
+        return { alumnoId, periodo, nota };
+      });
+      btn.disabled = true; btn.textContent = 'Guardando…';
+      try {
+        const r = await api('PUT', `/api/calificaciones/planilla/${asignacion}`, { ciclo: datos.ciclo, notas });
+        notas.forEach(({ alumnoId, periodo, nota }) => {
+          const a = datos.alumnos.find((x) => x.id === alumnoId);
+          if (nota === null) delete a.notas[periodo]; else a.notas[periodo] = parseNota(nota);
+        });
+        cambios.clear();
+        document.querySelectorAll('.input-nota').forEach(pintar);
+        App.toast(r.message);
+      } catch (error) {
+        App.toast(error.message);
+      } finally {
+        btn.textContent = 'Guardar cambios';
+        actualizarBarra();
+      }
+    }
+
+    document.getElementById('btn-guardar').addEventListener('click', guardar);
+    window.addEventListener('beforeunload', (e) => {
+      if (cambios.size) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol === 'secretaria' || usuario.rol === 'director') {
+        const v = document.getElementById('volver');
+        v.href = '/cursos.html'; v.textContent = '← Volver a cursos';
+      }
+      if (!asignacion) {
+        document.getElementById('contenido').innerHTML = '<p class="cargando">Elegí una materia desde <a href="/mis-cursos.html">Mis cursos</a>.</p>';
+        return;
+      }
+      try {
+        datos = await api('GET', `/api/calificaciones/planilla/${asignacion}`);
+        render();
+      } catch (error) {
+        document.getElementById('contenido').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    })();
+  </script>
+</body>
+</html>

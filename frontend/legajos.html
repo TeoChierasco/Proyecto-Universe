@@ -196,6 +196,10 @@
             </div>
             <button type="submit" class="boton boton-primario">Guardar datos</button>
             ${l.actualizadoEn ? `<span class="ayuda-campo">Última actualización: ${fechaCorta(l.actualizadoEn)}</span>` : ''}
+            <div class="ficha-enlaces">
+              <a class="btn-mini" href="/boletin.html?id=${id}">Ver boletín</a>
+              <a class="btn-mini" href="/asistencia-alumno.html?id=${id}">Ver asistencia</a>
+            </div>
           </form>
 
           <div class="ficha-docs">

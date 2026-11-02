@@ -36,21 +36,21 @@ const App = {
   // Secciones del panel interno según el rol (íconos de línea por nombre).
   MENU_POR_ROL: {
     alumno: [
-      { icono: 'book',      titulo: 'Mis materias',     desc: 'Las materias que estás cursando este año.' },
-      { icono: 'file',      titulo: 'Calificaciones',   desc: 'Tus notas por materia y período.' },
+      { icono: 'book',      titulo: 'Mis materias',     desc: 'Las materias que estás cursando este año.', link: '/boletin.html' },
+      { icono: 'file',      titulo: 'Calificaciones',   desc: 'Tus notas por materia y período.', link: '/boletin.html' },
       { icono: 'clipboard', titulo: 'Asistencia',       desc: 'Tus inasistencias y justificativos.', link: '/asistencia-alumno.html' },
       { icono: 'megaphone', titulo: 'Comunicados',      desc: 'Avisos del instituto y de tus profesores.', link: '/comunicados.html' },
       { icono: 'calendar',  titulo: 'Horarios',         desc: 'Tu horario semanal de clases.' },
     ],
     padre: [
       { icono: 'users',     titulo: 'Mis hijos/as',     desc: 'Solicitá el vínculo con tus hijos y seguí su curso.', link: '/hijos.html' },
-      { icono: 'file',      titulo: 'Calificaciones',   desc: 'Las notas de tus hijos/as.' },
+      { icono: 'file',      titulo: 'Calificaciones',   desc: 'Los boletines de tus hijos/as.', link: '/hijos.html' },
       { icono: 'clipboard', titulo: 'Asistencia',       desc: 'Inasistencias y avisos de tus hijos/as.', link: '/hijos.html' },
       { icono: 'megaphone', titulo: 'Comunicados',      desc: 'Avisos del instituto.', link: '/comunicados.html' },
     ],
     profesor: [
-      { icono: 'briefcase', titulo: 'Mis cursos',       desc: 'Los cursos y materias que dictás.' },
-      { icono: 'edit',      titulo: 'Cargar notas',     desc: 'Registrá las calificaciones de tus alumnos.' },
+      { icono: 'briefcase', titulo: 'Mis cursos',       desc: 'Los cursos y materias que dictás.', link: '/mis-cursos.html' },
+      { icono: 'edit',      titulo: 'Cargar notas',     desc: 'Registrá las calificaciones de tus alumnos.', link: '/mis-cursos.html' },
       { icono: 'clipboard', titulo: 'Tomar asistencia', desc: 'Pasá lista en tus clases.' },
       { icono: 'megaphone', titulo: 'Publicar comunicado', desc: 'Enviá avisos a tus cursos.', link: '/comunicados.html' },
     ],

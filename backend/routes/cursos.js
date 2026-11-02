@@ -110,6 +110,7 @@ router.get('/:id', requireAuth, soloAdmin, async (req, res) => {
     return {
       id: m.id,
       nombre: m.nombre,
+      asignacionId: asig ? asig.id : null,
       profesor: asig ? profesor[asig.profesor_id] || 'Profesor/a' : null,
       horas: asig ? asig.horas_semanales : null,
     };

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Boletín</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior no-imprimir">
+      <a href="/panel.html" class="enlace-volver" id="volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera no-imprimir">
+          <h1 id="titulo"><span class="destello">Calificaciones</span></h1>
+          <p class="subtitulo" id="subtitulo"></p>
+        </div>
+
+        <div class="filtros-asistencia no-imprimir" id="acciones" hidden>
+          <select class="input-mini" id="ciclo"></select>
+          <button class="boton boton-primario" id="btn-imprimir" type="button">Imprimir / guardar PDF</button>
+        </div>
+
+        <section class="boletin lista-ancha" id="contenido">
+          <p class="cargando">Cargando boletín…</p>
+        </section>
+      </div>
+    </main>
+
+    <footer class="pie no-imprimir">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const alumnoParam = params.get('id') || 'yo';
+    const anioActual = new Date().getFullYear();
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    const fmt = (n) => (n == null ? '—' : String(n).replace('.', ','));
+
+    async function api(ruta) {
+      const r = await fetch(ruta, { headers: { Authorization: `Bearer ${App.obtenerToken()}` } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function celda(n, aprob) {
+      if (n == null) return '<td class="nota vacia">—</td>';
+      return `<td class="nota ${n < aprob ? 'desaprobada' : ''}">${fmt(n)}</td>`;
+    }
+
+    function render(d) {
+      document.getElementById('titulo').innerHTML =
+        `${esc(d.alumno.nombre)} <span class="destello">${esc(d.alumno.apellido)}</span>`;
+      document.getElementById('subtitulo').textContent =
+        `${d.curso || 'Sin curso'} · Ciclo lectivo ${d.ciclo}`;
+
+      const cont = document.getElementById('contenido');
+      if (!d.materias.length) {
+        cont.innerHTML = '<p class="cargando">Todavía no hay materias ni notas para mostrar en este ciclo.</p>';
+        return;
+      }
+
+      cont.innerHTML = `
+        <div class="boletin-hoja">
+          <div class="boletin-encabezado">
+            <img src="/assets/logo.svg" data-logo-oscuro="/assets/logo-oscuro.svg" alt="Instituto Universe" class="boletin-logo" />
+            <div>
+              <div class="boletin-titulo">Boletín de calificaciones · ${d.ciclo}</div>
+              <div class="boletin-datos">
+                <strong>${esc(d.alumno.apellido)}, ${esc(d.alumno.nombre)}</strong>
+                · DNI ${esc(d.alumno.documento || '—')} · ${esc(d.curso || 'Sin curso')} · Nivel Secundario
+              </div>
+            </div>
+          </div>
+
+          <table class="planilla tabla-boletin">
+            <thead>
+              <tr>
+                <th class="col-alumno">Materia</th>
+                ${d.periodos.map((p) => `<th>${esc(p.nombre)}</th>`).join('')}
+                <th>Promedio</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${d.materias.map((m) => `
+                <tr>
+                  <td class="col-alumno">${esc(m.nombre)}</td>
+                  ${d.periodos.map((p) => celda(m.notas[p.id], d.notaAprobacion)).join('')}
+                  <td class="col-promedio ${m.promedio == null ? '' : m.promedio < d.notaAprobacion ? 'desaprobada' : 'aprobada'}">${fmt(m.promedio)}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+
+          <div class="boletin-resumen">
+            <div><span class="sub-titulo">Promedio general</span><strong>${fmt(d.promedioGeneral)}</strong></div>
+            <div><span class="sub-titulo">Materias por debajo de ${d.notaAprobacion}</span><strong class="${d.materiasDesaprobadas ? 'texto-alerta' : ''}">${d.materiasDesaprobadas}</strong></div>
+          </div>
+          <p class="ayuda-campo boletin-nota">
+            Documento informativo generado por la plataforma. El promedio es el de los períodos con nota cargada.
+            Emitido el ${new Date().toLocaleDateString('es-AR')}.
+          </p>
+        </div>`;
+    }
+
+    async function cargar() {
+      const ciclo = document.getElementById('ciclo').value || anioActual;
+      try {
+        render(await api(`/api/calificaciones/boletin/${encodeURIComponent(alumnoParam)}?ciclo=${ciclo}`));
+        ajustarLogo();
+        document.getElementById('acciones').hidden = false;
+      } catch (error) {
+        document.getElementById('contenido').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    document.getElementById('ciclo').innerHTML =
+      [anioActual, anioActual - 1, anioActual - 2].map((a) => `<option value="${a}">Ciclo ${a}</option>`).join('');
+    document.getElementById('ciclo').addEventListener('change', cargar);
+    document.getElementById('btn-imprimir').addEventListener('click', () => window.print());
+    // El boletín siempre se imprime en tema claro.
+    let temaPrevio = null;
+    window.addEventListener('beforeprint', () => {
+      temaPrevio = document.documentElement.dataset.tema;
+      document.documentElement.dataset.tema = 'claro';
+      const logo = document.querySelector('.boletin-logo');
+      if (logo) logo.src = '/assets/logo.svg';
+    });
+    window.addEventListener('afterprint', () => {
+      if (temaPrevio) document.documentElement.dataset.tema = temaPrevio;
+      ajustarLogo();
+    });
+    function ajustarLogo() {
+      const logo = document.querySelector('.boletin-logo');
+      if (logo) logo.src = document.documentElement.dataset.tema === 'oscuro' ? logo.dataset.logoOscuro : '/assets/logo.svg';
+    }
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      const volver = document.getElementById('volver');
+      if (usuario.rol === 'padre') { volver.href = '/hijos.html'; volver.textContent = '← Volver a mis hijos/as'; }
+      if (usuario.rol === 'secretaria' || usuario.rol === 'director') { volver.href = 'javascript:history.back()'; volver.textContent = '← Volver'; }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

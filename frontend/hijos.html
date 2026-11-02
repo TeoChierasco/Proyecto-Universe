@@ -100,6 +100,7 @@
             <span class="codigo-meta">${h.parentesco ? esc(h.parentesco) + ' · ' : ''}${detalle}</span>
           </div>
           <div class="fila-acciones">
+            ${aprobado ? `<a class="btn-mini" href="/boletin.html?id=${h.id}">Ver boletín</a>` : ''}
             ${aprobado ? `<a class="btn-mini" href="/asistencia-alumno.html?id=${h.id}">Ver asistencia</a>` : ''}
             <button class="btn-mini peligro" data-quitar="${h.id}">${aprobado ? 'Quitar' : 'Cancelar solicitud'}</button>
           </div>
