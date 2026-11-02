@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Cursos y divisiones</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1><span class="destello">Cursos y divisiones</span></h1>
+          <p class="subtitulo" id="subtitulo">Nómina de alumnos y docentes por curso</p>
+        </div>
+
+        <div class="aviso-info aviso-sin-curso" id="aviso-sin-curso" hidden></div>
+
+        <div class="anios-lista lista-ancha" id="cursos">
+          <p class="cargando">Cargando cursos…</p>
+        </div>
+
+        <!-- Detalle del curso seleccionado -->
+        <section class="detalle-curso lista-ancha" id="detalle" hidden></section>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let estado = { cursos: [], seleccionado: null };
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    async function api(ruta) {
+      const r = await fetch(ruta, { headers: { Authorization: `Bearer ${App.obtenerToken()}` } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function renderCursos() {
+      const cont = document.getElementById('cursos');
+      if (!estado.cursos.length) {
+        cont.innerHTML = '<p class="cargando">No hay divisiones cargadas. Crealas desde <a href="/plan.html">Plan de estudios</a>.</p>';
+        return;
+      }
+
+      const anios = [...new Set(estado.cursos.map((c) => c.anio))];
+      cont.innerHTML = anios.map((anio) => `
+        <div class="anio-bloque">
+          <h2 class="anio-titulo">${anio}.º año</h2>
+          <div class="cursos-grilla">
+            ${estado.cursos.filter((c) => c.anio === anio).map((c) => `
+              <button class="tarjeta-curso ${estado.seleccionado === c.id ? 'activa' : ''}" data-curso="${c.id}">
+                <span class="curso-nombre">${c.anio}.º ${esc(c.division)}</span>
+                <span class="curso-dato"><strong>${c.alumnos}</strong> alumno${c.alumnos === 1 ? '' : 's'}</span>
+                <span class="curso-dato ${c.materias && c.materiasConDocente < c.materias ? 'alerta' : ''}">
+                  ${c.materiasConDocente}/${c.materias} materias con docente
+                </span>
+              </button>`).join('')}
+          </div>
+        </div>`).join('');
+
+      cont.querySelectorAll('[data-curso]').forEach((b) =>
+        b.addEventListener('click', () => seleccionar(Number(b.dataset.curso))));
+    }
+
+    async function seleccionar(id) {
+      estado.seleccionado = id;
+      renderCursos();
+      const det = document.getElementById('detalle');
+      det.hidden = false;
+      det.innerHTML = '<p class="cargando">Cargando curso…</p>';
+      det.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      try {
+        const data = await api(`/api/cursos/${id}`);
+        renderDetalle(data);
+      } catch (error) {
+        det.innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    function renderDetalle({ curso, alumnos, materias, totalDocumentos }) {
+      const det = document.getElementById('detalle');
+      const sinDocente = materias.filter((m) => !m.profesor).length;
+      const legajosIncompletos = alumnos.filter((a) => !a.legajoCompleto).length;
+
+      det.innerHTML = `
+        <div class="detalle-cabecera">
+          <h2 class="titulo-seccion">${curso.anio}.º ${esc(curso.division)}</h2>
+          <div class="detalle-acciones">
+            <a class="btn-mini" href="/alumnos.html">Asignar alumnos</a>
+            <a class="btn-mini" href="/profesores.html">Asignar docentes</a>
+          </div>
+        </div>
+
+        <div class="detalle-columnas">
+          <div class="anio-bloque">
+            <span class="sub-titulo">Nómina · ${alumnos.length} alumno${alumnos.length === 1 ? '' : 's'}</span>
+            ${legajosIncompletos ? `<p class="ayuda-campo">${legajosIncompletos} con documentación pendiente · <a href="/legajos.html?curso=${curso.id}">ver legajos</a></p>` : ''}
+            ${alumnos.length ? `
+              <ol class="nomina">
+                ${alumnos.map((a) => `
+                  <li>
+                    <span>${esc(a.apellido)}, ${esc(a.nombre)}</span>
+                    <span class="nomina-doc ${a.legajoCompleto ? 'ok' : ''}" title="Documentación entregada">
+                      ${a.documentosCompletos}/${totalDocumentos}
+                    </span>
+                  </li>`).join('')}
+              </ol>` : '<p class="anio-proximamente">Todavía no hay alumnos en este curso.</p>'}
+          </div>
+
+          <div class="anio-bloque">
+            <span class="sub-titulo">Materias y docentes${sinDocente ? ` · ${sinDocente} sin asignar` : ''}</span>
+            ${materias.length ? `
+              <ul class="lista-materias-docentes">
+                ${materias.map((m) => `
+                  <li class="${m.profesor ? '' : 'sin-docente'}">
+                    <span class="md-materia">${esc(m.nombre)}</span>
+                    <span class="md-profesor">${m.profesor ? esc(m.profesor) + (m.horas ? ` · ${m.horas} h` : '') : 'Sin docente'}</span>
+                  </li>`).join('')}
+              </ul>` : '<p class="anio-proximamente">No hay materias cargadas para este año.</p>'}
+          </div>
+        </div>`;
+    }
+
+    async function cargar() {
+      try {
+        const data = await api('/api/cursos');
+        estado.cursos = data.cursos;
+        const totalAlumnos = data.cursos.reduce((s, c) => s + c.alumnos, 0);
+        document.getElementById('subtitulo').textContent =
+          `${data.cursos.length} divisiones · ${totalAlumnos} alumnos inscriptos`;
+
+        const aviso = document.getElementById('aviso-sin-curso');
+        if (data.alumnosSinCurso > 0) {
+          aviso.innerHTML = `Hay <strong>${data.alumnosSinCurso}</strong> alumno${data.alumnosSinCurso === 1 ? '' : 's'} sin curso asignado. <a href="/alumnos.html">Asignar ahora</a>`;
+          aviso.hidden = false;
+        }
+        renderCursos();
+      } catch (error) {
+        document.getElementById('cursos').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'secretaria' && usuario.rol !== 'director') {
+        document.getElementById('cursos').innerHTML = '<p class="cargando">Tu rol no gestiona cursos.</p>';
+        return;
+      }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

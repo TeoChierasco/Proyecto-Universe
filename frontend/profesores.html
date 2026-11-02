@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Profesores</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1><span class="destello">Profesores</span></h1>
+          <p class="subtitulo" id="subtitulo">Docentes, materias y cursos asignados</p>
+        </div>
+
+        <!-- Nueva asignación -->
+        <form class="tarjeta-form" id="form-asignar" hidden>
+          <h2 class="titulo-tarjeta">Asignar materia a un profesor</h2>
+          <div class="campo">
+            <label for="profesor">Profesor/a</label>
+            <select id="profesor" required></select>
+          </div>
+          <div class="fila-doble">
+            <div class="campo">
+              <label for="curso">Curso</label>
+              <select id="curso" required></select>
+            </div>
+            <div class="campo">
+              <label for="materia">Materia</label>
+              <select id="materia" required disabled>
+                <option value="">Elegí primero el curso</option>
+              </select>
+            </div>
+          </div>
+          <div class="campo">
+            <label for="horas">Horas semanales (opcional)</label>
+            <input type="number" id="horas" min="0" max="40" placeholder="Ej: 4" />
+            <span class="ayuda-campo">Se usarán como base para la liquidación docente.</span>
+          </div>
+          <div class="mensaje-form" id="mensaje" role="alert"></div>
+          <button type="submit" class="boton boton-primario" id="btn-asignar">Asignar</button>
+        </form>
+
+        <div class="barra-busqueda" id="barra" hidden>
+          <input type="text" class="input-mini" id="buscar" placeholder="Buscar profesor o materia…" />
+        </div>
+
+        <div class="lista-usuarios" id="lista">
+          <p class="cargando">Cargando profesores…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let estado = { profesores: [], materias: [], cursos: [] };
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    const curso = (id) => estado.cursos.find((c) => c.id === id);
+    const materia = (id) => estado.materias.find((m) => m.id === id);
+    const cursoLabel = (c) => (c ? `${c.anio}.º ${c.division}` : '—');
+
+    async function api(metodo, ruta, body) {
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${App.obtenerToken()}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    // Materias del año del curso elegido que todavía no tienen docente en ese curso.
+    function actualizarMaterias() {
+      const sel = document.getElementById('materia');
+      const c = curso(Number(document.getElementById('curso').value));
+      if (!c) {
+        sel.innerHTML = '<option value="">Elegí primero el curso</option>';
+        sel.disabled = true;
+        return;
+      }
+      const ocupadas = new Set();
+      estado.profesores.forEach((p) => p.asignaciones.forEach((a) => {
+        if (a.cursoId === c.id) ocupadas.add(a.materiaId);
+      }));
+      const libres = estado.materias.filter((m) => m.anio === c.anio && !ocupadas.has(m.id));
+      sel.disabled = !libres.length;
+      sel.innerHTML = libres.length
+        ? '<option value="">Elegí la materia</option>' + libres.map((m) => `<option value="${m.id}">${esc(m.nombre)}</option>`).join('')
+        : '<option value="">Todas las materias de este curso ya tienen docente</option>';
+    }
+
+    function renderLista() {
+      const filtro = (document.getElementById('buscar').value || '').toLowerCase().trim();
+      const cont = document.getElementById('lista');
+
+      const visibles = estado.profesores.filter((p) => {
+        if (!filtro) return true;
+        const materias = p.asignaciones.map((a) => (materia(a.materiaId) || {}).nombre).join(' ');
+        return `${p.nombre} ${p.apellido} ${p.email} ${materias}`.toLowerCase().includes(filtro);
+      });
+
+      if (!estado.profesores.length) {
+        cont.innerHTML = '<p class="cargando">Todavía no hay profesores registrados. Generá un código en <a href="/codigos.html">Generar códigos</a> para que se registren.</p>';
+        return;
+      }
+      if (!visibles.length) {
+        cont.innerHTML = '<p class="cargando">Ningún profesor coincide con la búsqueda.</p>';
+        return;
+      }
+
+      cont.innerHTML = visibles.map((p) => {
+        const horas = p.asignaciones.reduce((s, a) => s + (a.horas || 0), 0);
+        return `
+          <div class="fila-usuario fila-profesor">
+            <div class="fila-profesor-cabecera">
+              <div class="fila-info">
+                <span class="usuario-nombre-lista">${esc(p.apellido)}, ${esc(p.nombre)}</span>
+                <span class="codigo-meta">${esc(p.email)}</span>
+              </div>
+              <span class="resumen-horas">${p.asignaciones.length} materia${p.asignaciones.length === 1 ? '' : 's'}${horas ? ` · ${horas} h/sem` : ''}</span>
+            </div>
+            ${p.asignaciones.length ? `
+              <div class="materias-grid">
+                ${p.asignaciones.map((a) => `
+                  <span class="chip-materia">
+                    ${esc((materia(a.materiaId) || {}).nombre || 'Materia')} · ${cursoLabel(curso(a.cursoId))}${a.horas ? ` · ${a.horas} h` : ''}
+                    <button class="chip-x" data-quitar="${a.id}" title="Quitar asignación">×</button>
+                  </span>`).join('')}
+              </div>` : '<span class="anio-proximamente">Sin materias asignadas.</span>'}
+          </div>`;
+      }).join('');
+
+      cont.querySelectorAll('[data-quitar]').forEach((b) =>
+        b.addEventListener('click', () => quitar(Number(b.dataset.quitar))));
+    }
+
+    async function quitar(id) {
+      try {
+        await api('DELETE', `/api/profesores/asignaciones/${id}`);
+        estado.profesores.forEach((p) => { p.asignaciones = p.asignaciones.filter((a) => a.id !== id); });
+        App.toast('Asignación quitada');
+        renderLista();
+        actualizarMaterias();
+      } catch (error) { App.toast(error.message); }
+    }
+
+    async function cargar() {
+      try {
+        const data = await api('GET', '/api/profesores');
+        Object.assign(estado, data);
+
+        document.getElementById('profesor').innerHTML = '<option value="">Elegí un profesor</option>' +
+          data.profesores.map((p) => `<option value="${p.id}">${esc(p.apellido)}, ${esc(p.nombre)}</option>`).join('');
+        document.getElementById('curso').innerHTML = '<option value="">Elegí un curso</option>' +
+          data.cursos.map((c) => `<option value="${c.id}">${cursoLabel(c)}</option>`).join('');
+
+        const total = data.profesores.reduce((s, p) => s + p.asignaciones.length, 0);
+        document.getElementById('subtitulo').textContent =
+          `${data.profesores.length} profesor${data.profesores.length === 1 ? '' : 'es'} · ${total} materias asignadas`;
+        document.getElementById('form-asignar').hidden = !data.profesores.length;
+        document.getElementById('barra').hidden = !data.profesores.length;
+        actualizarMaterias();
+        renderLista();
+      } catch (error) {
+        document.getElementById('lista').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    document.getElementById('curso').addEventListener('change', actualizarMaterias);
+    document.getElementById('buscar').addEventListener('input', renderLista);
+
+    document.getElementById('form-asignar').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const mensaje = document.getElementById('mensaje');
+      const btn = document.getElementById('btn-asignar');
+      App.ocultarMensaje(mensaje);
+
+      const body = {
+        profesorId: document.getElementById('profesor').value,
+        cursoId: Number(document.getElementById('curso').value),
+        materiaId: Number(document.getElementById('materia').value),
+        horas: document.getElementById('horas').value,
+      };
+      if (!body.profesorId || !body.cursoId || !body.materiaId) {
+        App.mostrarMensaje(mensaje, 'Elegí profesor, curso y materia.', 'error');
+        return;
+      }
+
+      btn.disabled = true; btn.textContent = 'Asignando…';
+      try {
+        const data = await api('POST', '/api/profesores/asignaciones', body);
+        const p = estado.profesores.find((x) => x.id === body.profesorId);
+        if (p) p.asignaciones.push(data.asignacion);
+        App.toast('Materia asignada');
+        document.getElementById('horas').value = '';
+        actualizarMaterias();
+        renderLista();
+      } catch (error) {
+        App.mostrarMensaje(mensaje, error.message, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Asignar';
+      }
+    });
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'secretaria' && usuario.rol !== 'director') {
+        document.getElementById('lista').innerHTML = '<p class="cargando">Tu rol no gestiona profesores.</p>';
+        return;
+      }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

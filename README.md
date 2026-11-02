@@ -37,6 +37,7 @@ Flujo de entrada a la aplicación:
 - Asistencia
 - Familia / hijos
 - Inscripciones y cursos (esquemas SQL)
+- **Secretaría Pedagógica (1.ª etapa):** legajos y documentación de alumnos, cursos y divisiones (nómina y docentes por curso), profesores con materias, cursos y horas semanales
 
 ## Pila tecnológica
 
@@ -85,6 +86,9 @@ La aplicación queda disponible en `http://localhost:3000`.
 │   │   ├── codigos.js        # códigos de aprobación
 │   │   ├── comunicados.js    # cartelera / avisos
 │   │   ├── familia.js        # vínculos familiares
+│   │   ├── legajos.js        # legajos y documentación de alumnos
+│   │   ├── cursos.js         # nómina y docentes por curso
+│   │   ├── profesores.js     # asignaciones docentes (materia + curso + horas)
 │   │   └── usuarios.js       # gestión de cuentas
 │   ├── middleware/
 │   │   └── requireAuth.js    # valida token y carga perfil
@@ -116,6 +120,9 @@ La aplicación queda disponible en `http://localhost:3000`.
     ├── asistencia.html
     ├── asistencia-alumno.html
     ├── hijos.html
+    ├── legajos.html
+    ├── cursos.html
+    ├── profesores.html
     ├── css/styles.css
     ├── js/app.js
     └── assets/               # logo.svg · logo-oscuro.svg · isotipo.svg

@@ -755,3 +755,109 @@ h1 {
   .com-head { flex-direction: column; gap: 0.5rem; }
   .com-foot { flex-direction: column; align-items: flex-start; }
 }
+
+/* =========================================================
+   Secretaría Pedagógica — Legajos, Cursos y Profesores
+   ========================================================= */
+.lista-ancha { max-width: 860px; }
+
+.campo textarea {
+  width: 100%; padding: 0.75rem 0.95rem; border-radius: 10px;
+  border: 1px solid var(--borde); background: var(--superficie); color: var(--texto);
+  font-size: 1rem; font-family: inherit; resize: vertical;
+}
+.campo textarea:focus { outline: none; border-color: var(--verde); box-shadow: 0 0 0 3px rgba(124, 181, 24, 0.18); }
+
+.contador-alerta .num { color: #b07800; }
+:root[data-tema="oscuro"] .contador-alerta .num { color: #f0c060; }
+
+/* ---------- Legajos ---------- */
+.fila-legajo {
+  text-align: left;
+  padding: 0.9rem 1.1rem; border-radius: 12px;
+  border: 1px solid var(--borde); background: var(--superficie); box-shadow: var(--sombra);
+  transition: border-color var(--transicion);
+}
+.fila-legajo.abierta { border-color: var(--verde); }
+.fila-legajo-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.faltantes { margin-top: 0.5rem; font-size: 0.82rem; color: #9a6a00; }
+:root[data-tema="oscuro"] .faltantes { color: #f0c060; }
+
+.progreso { display: flex; align-items: center; gap: 0.55rem; }
+.progreso-barra { width: 90px; height: 8px; border-radius: 999px; background: var(--neutro-bg); overflow: hidden; }
+.progreso-barra span { display: block; height: 100%; border-radius: 999px; background: #e0a526; transition: width 300ms ease; }
+.progreso.completo .progreso-barra span { background: var(--verde); }
+.progreso-texto { font-size: 0.8rem; font-weight: 600; color: var(--texto-suave); white-space: nowrap; }
+
+.ficha:empty { display: none; }
+.ficha { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed var(--borde); }
+.ficha-grilla { display: grid; grid-template-columns: 1.2fr 1fr; gap: 1.6rem; text-align: left; }
+.ficha-datos .boton { width: 100%; }
+.ficha-docs { display: flex; flex-direction: column; gap: 0.5rem; }
+.doc-fila {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.7rem;
+  padding: 0.6rem 0.8rem; border-radius: 10px;
+  border: 1px solid var(--borde); border-left-width: 4px; background: var(--superficie-2);
+}
+.doc-fila.doc-pendiente { border-left-color: #e0a526; }
+.doc-fila.doc-entregado { border-left-color: var(--verde); }
+.doc-fila.doc-no_aplica { border-left-color: var(--neutro-borde); opacity: 0.75; }
+.doc-info { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.doc-nombre { font-size: 0.9rem; font-weight: 600; color: var(--texto); }
+
+/* ---------- Cursos y divisiones ---------- */
+.aviso-sin-curso a, .ayuda-campo a, .cargando a { color: var(--verde-osc); font-weight: 600; }
+.cursos-grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.8rem; }
+.tarjeta-curso {
+  cursor: pointer; font-family: inherit; text-align: left;
+  display: flex; flex-direction: column; gap: 0.25rem;
+  padding: 0.9rem 1rem; border-radius: 12px;
+  border: 1px solid var(--borde); background: var(--superficie-2); color: var(--texto);
+  transition: border-color var(--transicion), transform var(--transicion), background var(--transicion);
+}
+.tarjeta-curso:hover { border-color: var(--verde); transform: translateY(-2px); }
+.tarjeta-curso.activa { border-color: var(--verde); background: var(--verde-tenue); }
+.curso-nombre { font-size: 1.15rem; font-weight: 800; color: var(--verde-osc); }
+.curso-dato { font-size: 0.82rem; color: var(--texto-suave); }
+.curso-dato.alerta { color: #9a6a00; }
+:root[data-tema="oscuro"] .curso-dato.alerta { color: #f0c060; }
+
+.detalle-curso { margin-top: 2rem; width: 100%; scroll-margin-top: 1rem; }
+.detalle-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.detalle-cabecera .titulo-seccion { font-size: 1.5rem; }
+.detalle-acciones { display: flex; gap: 0.5rem; }
+.detalle-acciones .btn-mini { text-decoration: none; }
+.detalle-columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+
+.nomina { margin: 0.4rem 0 0; padding-left: 1.4rem; display: flex; flex-direction: column; gap: 0.35rem; }
+.nomina li { font-size: 0.92rem; color: var(--texto); }
+.nomina li > span:first-child { display: inline-block; min-width: 70%; }
+.nomina-doc {
+  float: right; font-size: 0.75rem; font-weight: 700; padding: 0.1rem 0.5rem; border-radius: 999px;
+  background: #fff3d9; color: #9a6a00; border: 1px solid #f0cf8a;
+}
+.nomina-doc.ok { background: var(--verde-tenue); color: var(--verde-osc); border-color: var(--verde-claro); }
+:root[data-tema="oscuro"] .nomina-doc { background: rgba(240,184,64,0.14); color: #f0c060; border-color: rgba(240,184,64,0.35); }
+:root[data-tema="oscuro"] .nomina-doc.ok { background: var(--verde-tenue); color: var(--verde-osc); border-color: var(--verde-claro); }
+
+.lista-materias-docentes { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.lista-materias-docentes li {
+  display: flex; justify-content: space-between; gap: 0.6rem;
+  padding: 0.5rem 0.7rem; border-radius: 10px; background: var(--superficie-2); font-size: 0.9rem;
+}
+.md-materia { font-weight: 600; color: var(--texto); }
+.md-profesor { color: var(--texto-suave); text-align: right; }
+.sin-docente .md-profesor { color: #9a6a00; font-weight: 600; }
+:root[data-tema="oscuro"] .sin-docente .md-profesor { color: #f0c060; }
+
+/* ---------- Profesores ---------- */
+.fila-profesor { flex-direction: column; align-items: stretch; text-align: left; }
+.fila-profesor-cabecera { width: 100%; display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.resumen-horas { font-size: 0.8rem; font-weight: 700; color: var(--verde-osc); white-space: nowrap; }
+.fila-usuario .materias-grid { margin-top: 0.6rem; }
+.chip-materia .chip-x { margin-left: 0.15rem; }
+
+@media (max-width: 720px) {
+  .ficha-grilla, .detalle-columnas { grid-template-columns: 1fr; }
+  .fila-legajo-cabecera { flex-direction: column; align-items: flex-start; }
+}

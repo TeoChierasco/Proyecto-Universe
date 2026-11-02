@@ -17,6 +17,9 @@ const usuariosRoutes = require('./routes/usuarios');
 const alumnosRoutes = require('./routes/alumnos');
 const familiaRoutes = require('./routes/familia');
 const asistenciaRoutes = require('./routes/asistencia');
+const legajosRoutes = require('./routes/legajos');
+const cursosRoutes = require('./routes/cursos');
+const profesoresRoutes = require('./routes/profesores');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,6 +40,9 @@ app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/alumnos', alumnosRoutes);
 app.use('/api/familia', familiaRoutes);
 app.use('/api/asistencia', asistenciaRoutes);
+app.use('/api/legajos', legajosRoutes);
+app.use('/api/cursos', cursosRoutes);
+app.use('/api/profesores', profesoresRoutes);
 
 // Cualquier ruta no-API desconocida vuelve a la pantalla de bienvenida
 app.use((req, res, next) => {

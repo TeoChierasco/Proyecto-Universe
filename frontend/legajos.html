@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Legajos</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1><span class="destello">Legajos</span></h1>
+          <p class="subtitulo" id="subtitulo">Datos de cada alumno y control de documentación</p>
+        </div>
+
+        <div class="contadores" id="contadores" hidden>
+          <div class="contador"><span class="num" id="c-total">0</span><span class="cap">Alumnos</span></div>
+          <div class="contador"><span class="num" id="c-completos">0</span><span class="cap">Legajos completos</span></div>
+          <div class="contador contador-alerta"><span class="num" id="c-pendientes">0</span><span class="cap">Con faltantes</span></div>
+        </div>
+
+        <div class="filtros-asistencia" id="filtros" hidden>
+          <input type="text" class="input-mini" id="buscar" placeholder="Buscar por nombre o DNI…" />
+          <select class="input-mini" id="filtro-curso"></select>
+          <select class="input-mini" id="filtro-estado">
+            <option value="">Todos los legajos</option>
+            <option value="pendientes">Con documentación pendiente</option>
+            <option value="completos">Completos</option>
+          </select>
+        </div>
+
+        <div class="lista-usuarios lista-ancha" id="lista">
+          <p class="cargando">Cargando legajos…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let estado = { alumnos: [], cursos: [], documentos: [], abierto: null };
+
+    const ESTADOS_DOC = {
+      pendiente: 'Pendiente',
+      entregado: 'Entregado',
+      no_aplica: 'No corresponde',
+    };
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    function cursoLabel(id) {
+      const c = estado.cursos.find((x) => x.id === id);
+      return c ? `${c.anio}.º ${c.division}` : 'Sin curso';
+    }
+    function fechaCorta(iso) {
+      if (!iso) return '';
+      const [a, m, d] = iso.slice(0, 10).split('-');
+      return `${d}/${m}/${a}`;
+    }
+
+    async function api(metodo, ruta, body) {
+      const token = App.obtenerToken();
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function barraProgreso(doc) {
+      const pct = Math.round((doc.completos / doc.total) * 100);
+      const clase = doc.completos === doc.total ? 'completo' : '';
+      return `
+        <div class="progreso ${clase}" title="${doc.completos} de ${doc.total} documentos">
+          <div class="progreso-barra"><span style="width:${pct}%"></span></div>
+          <span class="progreso-texto">${doc.completos}/${doc.total} docs</span>
+        </div>`;
+    }
+
+    function renderContadores() {
+      const total = estado.alumnos.length;
+      const completos = estado.alumnos.filter((a) => a.documentacion.completos === a.documentacion.total).length;
+      document.getElementById('c-total').textContent = total;
+      document.getElementById('c-completos').textContent = completos;
+      document.getElementById('c-pendientes').textContent = total - completos;
+    }
+
+    function renderLista() {
+      const filtro = (document.getElementById('buscar').value || '').toLowerCase().trim();
+      const curso = document.getElementById('filtro-curso').value;
+      const est = document.getElementById('filtro-estado').value;
+      const cont = document.getElementById('lista');
+
+      const visibles = estado.alumnos.filter((a) => {
+        const completo = a.documentacion.completos === a.documentacion.total;
+        if (est === 'pendientes' && completo) return false;
+        if (est === 'completos' && !completo) return false;
+        if (curso === 'sin' && a.cursoId) return false;
+        if (curso && curso !== 'sin' && a.cursoId !== Number(curso)) return false;
+        if (!filtro) return true;
+        return `${a.nombre} ${a.apellido} ${a.documento || ''}`.toLowerCase().includes(filtro);
+      });
+
+      if (!visibles.length) {
+        cont.innerHTML = '<p class="cargando">No hay alumnos que coincidan con el filtro.</p>';
+        return;
+      }
+
+      cont.innerHTML = visibles.map((a) => `
+        <div class="fila-legajo ${estado.abierto === a.id ? 'abierta' : ''}" data-id="${a.id}">
+          <div class="fila-legajo-cabecera">
+            <div class="fila-info">
+              <span class="usuario-nombre-lista">${esc(a.apellido)}, ${esc(a.nombre)}</span>
+              <span class="codigo-meta">${cursoLabel(a.cursoId)} · DNI ${esc(a.documento || '—')}</span>
+            </div>
+            <div class="fila-acciones">
+              ${barraProgreso(a.documentacion)}
+              <button class="btn-mini" data-abrir="${a.id}">${estado.abierto === a.id ? 'Cerrar' : 'Ver legajo'}</button>
+            </div>
+          </div>
+          ${a.documentacion.pendientes.length && estado.abierto !== a.id
+            ? `<div class="faltantes">Falta: ${a.documentacion.pendientes.map((t) => esc(nombreDoc(t))).join(', ')}</div>` : ''}
+          <div class="ficha" id="ficha-${a.id}"></div>
+        </div>`).join('');
+
+      cont.querySelectorAll('[data-abrir]').forEach((b) =>
+        b.addEventListener('click', () => alternarFicha(b.dataset.abrir)));
+
+      if (estado.abierto) cargarFicha(estado.abierto);
+    }
+
+    function nombreDoc(tipo) {
+      const d = estado.documentos.find((x) => x.tipo === tipo);
+      return d ? d.nombre : tipo;
+    }
+
+    function alternarFicha(id) {
+      estado.abierto = estado.abierto === id ? null : id;
+      renderLista();
+    }
+
+    async function cargarFicha(id) {
+      const cont = document.getElementById(`ficha-${id}`);
+      if (!cont) return;
+      cont.innerHTML = '<p class="cargando">Cargando legajo…</p>';
+      try {
+        const data = await api('GET', `/api/legajos/${id}`);
+        renderFicha(cont, id, data);
+      } catch (error) {
+        cont.innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    function renderFicha(cont, id, data) {
+      const l = data.legajo;
+      cont.innerHTML = `
+        <div class="ficha-grilla">
+          <form class="ficha-datos" id="form-${id}">
+            <span class="sub-titulo">Datos personales</span>
+            <div class="fila-doble">
+              <div class="campo">
+                <label>Fecha de nacimiento</label>
+                <input type="date" name="fechaNacimiento" value="${esc(l.fechaNacimiento)}" />
+              </div>
+              <div class="campo">
+                <label>Teléfono</label>
+                <input type="tel" name="telefono" maxlength="40" value="${esc(l.telefono)}" placeholder="Ej: 11 5555-1234" />
+              </div>
+            </div>
+            <div class="campo">
+              <label>Domicilio</label>
+              <input type="text" name="domicilio" maxlength="200" value="${esc(l.domicilio)}" placeholder="Calle, número, localidad" />
+            </div>
+            <div class="campo">
+              <label>Contacto de emergencia</label>
+              <input type="text" name="contactoEmergencia" maxlength="200" value="${esc(l.contactoEmergencia)}" placeholder="Nombre, vínculo y teléfono" />
+            </div>
+            <div class="campo">
+              <label>Observaciones</label>
+              <textarea name="observaciones" rows="3" maxlength="1000" placeholder="Información relevante (salud, situación familiar, etc.)">${esc(l.observaciones)}</textarea>
+            </div>
+            <button type="submit" class="boton boton-primario">Guardar datos</button>
+            ${l.actualizadoEn ? `<span class="ayuda-campo">Última actualización: ${fechaCorta(l.actualizadoEn)}</span>` : ''}
+          </form>
+
+          <div class="ficha-docs">
+            <span class="sub-titulo">Documentación</span>
+            ${data.documentos.map((d) => `
+              <div class="doc-fila doc-${d.estado}">
+                <div class="doc-info">
+                  <span class="doc-nombre">${esc(d.nombre)}</span>
+                  ${d.estado === 'entregado' && d.fechaEntrega ? `<span class="codigo-meta">Entregado el ${fechaCorta(d.fechaEntrega)}</span>` : ''}
+                </div>
+                <select class="input-mini" data-doc="${d.tipo}">
+                  ${Object.entries(ESTADOS_DOC).map(([v, t]) => `<option value="${v}" ${v === d.estado ? 'selected' : ''}>${t}</option>`).join('')}
+                </select>
+              </div>`).join('')}
+          </div>
+        </div>`;
+
+      cont.querySelector(`#form-${id}`).addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = new FormData(e.target);
+        try {
+          await api('PUT', `/api/legajos/${id}`, Object.fromEntries(f.entries()));
+          App.toast('Legajo guardado');
+        } catch (error) { App.toast(error.message); }
+      });
+
+      cont.querySelectorAll('[data-doc]').forEach((s) => s.addEventListener('change', async () => {
+        try {
+          await api('PATCH', `/api/legajos/${id}/documentos/${s.dataset.doc}`, { estado: s.value });
+          App.toast('Documentación actualizada');
+          actualizarResumen(id, s.dataset.doc, s.value);
+          await cargarFicha(id);
+        } catch (error) { App.toast(error.message); }
+      }));
+    }
+
+    // Recalcula el resumen del alumno sin volver a pedir toda la lista.
+    function actualizarResumen(id, tipo, nuevoEstado) {
+      const a = estado.alumnos.find((x) => x.id === id);
+      if (!a) return;
+      const pend = new Set(a.documentacion.pendientes);
+      if (nuevoEstado === 'pendiente') pend.add(tipo); else pend.delete(tipo);
+      a.documentacion.pendientes = estado.documentos.map((d) => d.tipo).filter((t) => pend.has(t));
+      a.documentacion.completos = a.documentacion.total - a.documentacion.pendientes.length;
+      renderContadores();
+      const fila = document.querySelector(`.fila-legajo[data-id="${id}"] .progreso`);
+      if (fila) fila.outerHTML = barraProgreso(a.documentacion);
+    }
+
+    async function cargar() {
+      try {
+        const data = await api('GET', '/api/legajos');
+        estado.alumnos = data.alumnos;
+        estado.cursos = data.cursos;
+        estado.documentos = data.documentos;
+
+        document.getElementById('filtro-curso').innerHTML =
+          '<option value="">Todos los cursos</option><option value="sin">Sin curso</option>' +
+          data.cursos.map((c) => `<option value="${c.id}">${c.anio}.º ${c.division}</option>`).join('');
+
+        // Permite llegar filtrado desde otra pantalla: legajos.html?curso=3
+        const cursoUrl = new URLSearchParams(location.search).get('curso');
+        if (cursoUrl) document.getElementById('filtro-curso').value = cursoUrl;
+
+        document.getElementById('contadores').hidden = false;
+        document.getElementById('filtros').hidden = false;
+        renderContadores();
+        renderLista();
+      } catch (error) {
+        document.getElementById('lista').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    ['buscar', 'filtro-curso', 'filtro-estado'].forEach((id) =>
+      document.getElementById(id).addEventListener(id === 'buscar' ? 'input' : 'change', renderLista));
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'secretaria' && usuario.rol !== 'director') {
+        document.getElementById('lista').innerHTML = '<p class="cargando">Tu rol no gestiona legajos.</p>';
+        return;
+      }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>
