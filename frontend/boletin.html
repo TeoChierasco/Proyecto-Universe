@@ -88,7 +88,7 @@
             <thead>
               <tr>
                 <th class="col-alumno">Materia</th>
-                ${d.periodos.map((p) => `<th>${esc(p.nombre)}</th>`).join('')}
+                ${d.periodos.map((p) => `<th>${esc(p.nombre)}${!p.publicado ? `<span class="estado-periodo">${d.soloPublicados ? 'Aún no emitido' : 'No emitido'}</span>` : ''}</th>`).join('')}
                 <th>Promedio</th>
               </tr>
             </thead>
@@ -107,7 +107,8 @@
             <div><span class="sub-titulo">Materias por debajo de ${d.notaAprobacion}</span><strong class="${d.materiasDesaprobadas ? 'texto-alerta' : ''}">${d.materiasDesaprobadas}</strong></div>
           </div>
           <p class="ayuda-campo boletin-nota">
-            Documento informativo generado por la plataforma. El promedio es el de los períodos con nota cargada.
+            Documento informativo generado por la plataforma. El promedio es el de los períodos ${d.soloPublicados ? 'emitidos' : 'con nota cargada'}.
+            ${!d.soloPublicados && d.periodos.some((p) => !p.publicado) ? 'Vista interna: incluye notas de períodos todavía no emitidos a las familias.' : ''}
             Emitido el ${new Date().toLocaleDateString('es-AR')}.
           </p>
         </div>`;

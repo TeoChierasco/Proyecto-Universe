@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Emisión de boletines</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior no-imprimir">
+      <a href="/cierre.html" class="enlace-volver">← Volver a cierre de notas</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera no-imprimir">
+          <h1>Emisión de <span class="destello">boletines</span></h1>
+          <p class="subtitulo" id="subtitulo">Imprimí o guardá en PDF los boletines de todo un curso (uno por hoja)</p>
+        </div>
+
+        <div class="filtros-asistencia no-imprimir" id="filtros" hidden>
+          <select class="input-mini" id="curso"></select>
+          <select class="input-mini" id="ciclo"></select>
+          <label class="filtro-etiqueta"><input type="checkbox" id="solo-publicados" checked /> Solo trimestres emitidos</label>
+          <button class="boton boton-primario" id="btn-imprimir" type="button" disabled>Imprimir / PDF</button>
+        </div>
+
+        <section class="boletines-lote lista-ancha" id="contenido">
+          <p class="cargando">Elegí un curso.</p>
+        </section>
+      </div>
+    </main>
+
+    <footer class="pie no-imprimir">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const anio = new Date().getFullYear();
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    const fmt = (n) => (n == null ? '—' : String(n).replace('.', ','));
+    async function api(ruta) {
+      const r = await fetch(ruta, { headers: { Authorization: `Bearer ${App.obtenerToken()}` } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function hoja(d) {
+      const celda = (n) => (n == null ? '<td class="nota vacia">—</td>' : `<td class="nota ${n < d.notaAprobacion ? 'desaprobada' : ''}">${fmt(n)}</td>`);
+      return `
+        <div class="boletin-hoja hoja-lote">
+          <div class="boletin-encabezado">
+            <img src="/assets/logo.svg" alt="Instituto Universe" class="boletin-logo" />
+            <div>
+              <div class="boletin-titulo">Boletín de calificaciones · ${d.ciclo}</div>
+              <div class="boletin-datos"><strong>${esc(d.alumno.apellido)}, ${esc(d.alumno.nombre)}</strong>
+                · DNI ${esc(d.alumno.documento || '—')} · ${esc(d.curso)} · Nivel Secundario</div>
+            </div>
+          </div>
+          <table class="planilla tabla-boletin">
+            <thead><tr><th class="col-alumno">Materia</th>
+              ${d.periodos.map((p) => `<th>${esc(p.nombre)}${!p.publicado ? '<span class="estado-periodo">No emitido</span>' : ''}</th>`).join('')}
+              <th>Promedio</th></tr></thead>
+            <tbody>
+              ${d.materias.map((m) => `<tr><td class="col-alumno">${esc(m.nombre)}</td>
+                ${d.periodos.map((p) => celda(m.notas[p.id])).join('')}
+                <td class="col-promedio ${m.promedio == null ? '' : m.promedio < d.notaAprobacion ? 'desaprobada' : 'aprobada'}">${fmt(m.promedio)}</td></tr>`).join('')}
+            </tbody>
+          </table>
+          <div class="boletin-resumen">
+            <div><span class="sub-titulo">Promedio general</span><strong>${fmt(d.promedioGeneral)}</strong></div>
+            <div><span class="sub-titulo">Materias por debajo de ${d.notaAprobacion}</span><strong class="${d.materiasDesaprobadas ? 'texto-alerta' : ''}">${d.materiasDesaprobadas}</strong></div>
+          </div>
+          <div class="firmas">
+            <div><span></span>Firma del Director/a</div>
+            <div><span></span>Firma de Secretaría</div>
+            <div><span></span>Firma del adulto responsable</div>
+          </div>
+        </div>`;
+    }
+
+    async function cargar() {
+      const curso = document.getElementById('curso').value;
+      const ciclo = document.getElementById('ciclo').value;
+      const solo = document.getElementById('solo-publicados').checked ? '1' : '0';
+      const btn = document.getElementById('btn-imprimir');
+      btn.disabled = true;
+      if (!curso) return;
+      const cont = document.getElementById('contenido');
+      cont.innerHTML = '<p class="cargando">Armando boletines…</p>';
+      try {
+        const d = await api(`/api/calificaciones/boletines-curso/${curso}?ciclo=${ciclo}&soloPublicados=${solo}`);
+        document.getElementById('subtitulo').textContent = `${d.curso} · ciclo ${ciclo} · ${d.boletines.length} boletín(es)`;
+        if (!d.boletines.length) { cont.innerHTML = '<p class="cargando">El curso no tiene alumnos.</p>'; return; }
+        cont.innerHTML = d.boletines.map(hoja).join('');
+        btn.disabled = false;
+      } catch (error) {
+        cont.innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    ['curso', 'ciclo', 'solo-publicados'].forEach((id) => document.getElementById(id).addEventListener('change', cargar));
+    document.getElementById('btn-imprimir').addEventListener('click', () => window.print());
+    let temaPrevio = null;
+    window.addEventListener('beforeprint', () => { temaPrevio = document.documentElement.dataset.tema; document.documentElement.dataset.tema = 'claro'; });
+    window.addEventListener('afterprint', () => { if (temaPrevio) document.documentElement.dataset.tema = temaPrevio; });
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'secretaria' && usuario.rol !== 'director') {
+        document.getElementById('contenido').innerHTML = '<p class="cargando">Esta sección es para Secretaría y Dirección.</p>';
+        return;
+      }
+      const est = await api('/api/academico/estructura');
+      document.getElementById('curso').innerHTML = '<option value="">Elegí un curso…</option>' +
+        (est.cursos || []).map((c) => `<option value="${c.id}">${c.anio}.º ${c.division}</option>`).join('');
+      document.getElementById('ciclo').innerHTML = [anio, anio - 1].map((a) => `<option value="${a}">Ciclo ${a}</option>`).join('');
+      document.getElementById('filtros').hidden = false;
+      const p = new URLSearchParams(location.search).get('curso');
+      if (p) { document.getElementById('curso').value = p; await cargar(); }
+    })();
+  </script>
+</body>
+</html>

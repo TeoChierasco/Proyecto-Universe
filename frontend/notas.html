@@ -89,7 +89,9 @@
           <thead>
             <tr>
               <th class="col-alumno">Alumno/a</th>
-              ${periodos.map((p) => `<th title="${esc(p.nombre)}">${esc(p.corto)}</th>`).join('')}
+              ${periodos.map((p) => `<th title="${esc(p.nombre)}">${esc(p.corto)}
+                ${!p.editable ? '<span class="estado-periodo cerrado">Cerrado</span>' : p.bloqueado ? '<span class="estado-periodo cerrado">Cerrado · corrección</span>' : p.fechaLimite ? `<span class="estado-periodo">Hasta ${p.fechaLimite.slice(8)}/${p.fechaLimite.slice(5, 7)}</span>` : ''}
+              </th>`).join('')}
               <th>Promedio</th>
             </tr>
           </thead>
@@ -98,7 +100,7 @@
               <tr data-alumno="${a.id}">
                 <td class="col-alumno"><span class="planilla-num">${i + 1}</span>${esc(a.apellido)}, ${esc(a.nombre)}</td>
                 ${periodos.map((p) => `
-                  <td><input class="input-nota" inputmode="decimal" maxlength="5"
+                  <td><input class="input-nota" inputmode="decimal" maxlength="5" ${p.editable ? '' : 'disabled'}
                        data-alumno="${a.id}" data-periodo="${p.id}"
                        value="${a.notas[p.id] != null ? fmt(a.notas[p.id]) : ''}"
                        aria-label="${esc(a.apellido)} — ${esc(p.nombre)}" /></td>`).join('')}

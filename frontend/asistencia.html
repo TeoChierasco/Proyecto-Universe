@@ -26,6 +26,12 @@
           <select class="input-mini" id="curso"></select>
           <input type="date" class="input-mini" id="fecha" />
           <button class="boton boton-primario" id="btn-cargar" type="button">Cargar</button>
+          <a class="btn-mini" id="link-planilla" href="/asistencia-mensual.html">Planilla mensual</a>
+        </div>
+
+        <div class="barra-lista" id="barra-lista" hidden>
+          <span class="codigo-meta" id="leyenda"></span>
+          <button class="btn-mini" id="btn-todos" type="button">Marcar todos presentes</button>
         </div>
 
         <div class="lista-usuarios" id="lista" style="margin-top:1.6rem;"></div>
@@ -42,7 +48,9 @@
   <script src="/js/app.js"></script>
   <script>
     let estado = { cursos: [], materias: [], puedeTomar: false };
-    const ESTADOS = { presente: 'Presente', ausente: 'Ausente', retirado: 'Retirado' };
+    const ESTADOS = { presente: 'Presente', tarde: 'Tarde', ausente: 'Ausente', retirado: 'Retirado' };
+    const NIVELES = { atencion: 'Atención', critico: 'Crítico', excedido: 'Superó el tope' };
+    const fmtN = (n) => String(n).replace('.', ',');
 
     function esc(t) {
       return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -63,7 +71,7 @@
 
     function badgeEstado(e) {
       if (!e) return '<span class="codigo-meta">Sin marcar</span>';
-      const clase = { presente: 'insignia-activo', ausente: 'insignia-ausente', retirado: 'insignia-retirado' }[e.estado];
+      const clase = { presente: 'insignia-activo', ausente: 'insignia-ausente', retirado: 'insignia-retirado', tarde: 'insignia-retirado' }[e.estado];
       const extra = e.estado === 'retirado' && e.materia_id ? '' : (e.justificada ? ' · justificada' : '');
       return `<span class="insignia ${clase}" style="position:static">${ESTADOS[e.estado]}${extra}</span>`;
     }
@@ -78,6 +86,13 @@
       estado.puedeTomar = data.puedeTomar;
       document.getElementById('subtitulo').textContent =
         `${data.curso.label} · ${data.alumnos.length} alumno${data.alumnos.length === 1 ? '' : 's'}`;
+      estado.limite = data.limite;
+      const v = data.valores || {};
+      document.getElementById('leyenda').textContent =
+        `Cómputo: ausente = ${fmtN(v.ausente ?? 1)} · retiro = ${fmtN(v.retirado ?? 0.5)} · tarde = ${fmtN(v.tarde ?? 0.25)} · tope anual ${data.limite}`;
+      document.getElementById('barra-lista').hidden = !data.alumnos.length;
+      document.getElementById('btn-todos').hidden = !data.puedeTomar;
+      document.getElementById('link-planilla').href = `/asistencia-mensual.html?curso=${data.curso.id}&mes=${document.getElementById('fecha').value.slice(0, 7)}`;
 
       if (!data.alumnos.length) {
         cont.innerHTML = '<p class="cargando">Este curso no tiene alumnos inscriptos todavía.</p>';
@@ -92,6 +107,7 @@
         const control = estado.puedeTomar ? `
           <select class="input-mini select-estado">
             <option value="presente" ${est === 'presente' ? 'selected' : ''}>Presente</option>
+            <option value="tarde" ${est === 'tarde' ? 'selected' : ''}>Tarde</option>
             <option value="ausente" ${est === 'ausente' ? 'selected' : ''}>Ausente</option>
             <option value="retirado" ${est === 'retirado' ? 'selected' : ''}>Retirado</option>
           </select>
@@ -100,10 +116,13 @@
           : `${badgeEstado(a.asistencia)}
              <a class="btn-mini" href="/asistencia-alumno.html?id=${a.id}">Ver</a>`;
 
+        const c = a.computo || { faltas: 0, nivel: 'normal' };
         return `
-          <div class="fila-usuario" data-alumno="${a.id}">
+          <div class="fila-usuario fila-asistencia" data-alumno="${a.id}">
             <div class="fila-info">
               <span class="usuario-nombre-lista">${esc(a.apellido)}, ${esc(a.nombre)}</span>
+              <span class="codigo-meta">${fmtN(c.faltas)} / ${estado.limite} inasistencias en el año
+                ${NIVELES[c.nivel] ? `<span class="nivel-faltas nivel-${c.nivel}">${NIVELES[c.nivel]}</span>` : ''}</span>
             </div>
             <div class="fila-acciones">${control}</div>
           </div>`;
@@ -152,6 +171,13 @@
     }
 
     document.getElementById('btn-cargar').addEventListener('click', cargar);
+    document.getElementById('btn-todos').addEventListener('click', () => {
+      document.querySelectorAll('#lista .select-estado').forEach((sel) => {
+        sel.value = 'presente';
+        sel.dispatchEvent(new Event('change'));
+      });
+      App.toast('Todos marcados como presentes. Ajustá las excepciones y guardá.');
+    });
     document.getElementById('btn-guardar').addEventListener('click', guardar);
     document.getElementById('fecha').addEventListener('change', cargar);
     document.getElementById('curso').addEventListener('change', cargar);

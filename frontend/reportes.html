@@ -126,6 +126,11 @@
       document.querySelectorAll('[data-csv]').forEach((b) => b.addEventListener('click', () => descargarCSV(b.dataset.csv)));
     }
 
+    const NIVELES = { atencion: 'Atención', critico: 'Crítico', excedido: 'Superó el tope' };
+    function etiquetaNivel(n) {
+      return NIVELES[n] ? `<span class="nivel-faltas nivel-${n}">${NIVELES[n]}</span>` : '';
+    }
+
     function resumenNumeros(items) {
       return `<div class="tiles tiles-chicos">${items.map(([l, v]) => `<div class="tile"><span class="tile-label">${esc(l)}</span><span class="tile-valor">${v}</span></div>`).join('')}</div>`;
     }
@@ -153,21 +158,24 @@
             { clave: 'registros', titulo: 'Registros' },
             { clave: 'presentes', titulo: 'Presentes' },
             { clave: 'ausentes', titulo: 'Ausentes' },
+            { clave: 'tardes', titulo: 'Tardes' },
             { clave: 'retirados', titulo: 'Retirados' },
             { clave: 'justificadas', titulo: 'Justificadas' },
+            { clave: 'faltas', titulo: 'Faltas computadas', fmt: num },
             { clave: 'presentismo', titulo: 'Presentismo', html: marca },
           ], d.porCurso, 'No hay cursos con alumnos.')}
           <h2 class="titulo-lista">Alumnos con inasistencias</h2>
           ${tabla('asis-alumnos', `inasistencias-por-alumno_${desde}_${hasta}`, [
-            { clave: 'alumno', titulo: 'Alumno/a', clase: 'col-alumno' },
+            { clave: 'alumno', titulo: 'Alumno/a', clase: 'col-alumno', html: (v, f) => `<a class="nomina-enlace" href="/asistencia-alumno.html?id=${f.id}">${esc(v)}</a>` },
             { clave: 'curso', titulo: 'Curso' },
             { clave: 'ausentes', titulo: 'Ausencias' },
-            { clave: 'injustificadas', titulo: 'Injustificadas' },
+            { clave: 'injustificadas', titulo: 'Injustif.' },
+            { clave: 'tardes', titulo: 'Tardes' },
             { clave: 'retirados', titulo: 'Retiros' },
-            { clave: 'registros', titulo: 'Días registrados' },
-            { clave: 'presentismo', titulo: 'Presentismo', html: marca },
+            { clave: 'faltas', titulo: 'Faltas período', fmt: num },
+            { clave: 'faltasCiclo', titulo: `Faltas ${d.ciclo} / ${d.limite}`, html: (v, f) => `${num(v)} ${etiquetaNivel(f.nivel)}` },
           ], d.porAlumno, 'Ningún alumno tiene inasistencias en este período.')}
-          <p class="ayuda-campo">Período: ${fechaCorta(d.desde)} al ${fechaCorta(d.hasta)}. Presentismo = días no ausentes / días registrados (los retiros cuentan como presentes). Solo alumnos activos.</p>`;
+          <p class="ayuda-campo">Período: ${fechaCorta(d.desde)} al ${fechaCorta(d.hasta)}. Presentismo = días no ausentes / días registrados. Faltas computadas: ausente = 1, retiro = ½, tarde = ¼ (las justificadas también cuentan para el tope). Solo alumnos activos.</p>`;
         engancharCSV();
       } catch (error) {
         cont.innerHTML = `<p class="cargando">${esc(error.message)}</p>`;

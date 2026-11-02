@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Acta</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior no-imprimir">
+      <a href="/actas.html" class="enlace-volver">← Volver a actas</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="lista-ancha" id="contenido" style="width:100%">
+          <p class="cargando">Cargando acta…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie no-imprimir">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const id = new URLSearchParams(location.search).get('id');
+    const TIPO = { citacion: 'Citación a la familia', reunion: 'Acta de reunión' };
+    const ESTADO = { programada: 'Programada', realizada: 'Realizada', cancelada: 'Cancelada' };
+    let datos = null;
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    const multilinea = (t) => esc(t || '').replace(/\n/g, '<br />');
+    function fechaLarga(iso) {
+      return new Date(iso + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    }
+    function fechaHora(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    }
+    async function api(metodo, ruta, body) {
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${App.obtenerToken()}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function render() {
+      const a = datos.acta;
+      const ed = a.puedeEditar;
+      const bloque = (etiqueta, valor, clase = '') =>
+        `<div class="acta-bloque ${clase}"><span class="sub-titulo">${etiqueta}</span><p>${multilinea(valor) || '<span class="codigo-meta">—</span>'}</p></div>`;
+      // Quien edita ve campos de texto; al imprimir se usa la versión de solo lectura.
+      const campo = (nombre, etiqueta, valor, filas, ayuda) => ed
+        ? `<div class="campo no-imprimir"><label>${etiqueta}</label><textarea name="${nombre}" rows="${filas}" maxlength="8000" placeholder="${ayuda || ''}">${esc(valor || '')}</textarea></div>
+           ${bloque(etiqueta, valor, 'solo-imprimir')}`
+        : bloque(etiqueta, valor);
+
+      document.getElementById('contenido').innerHTML = `
+        <article class="acta-hoja">
+          <div class="boletin-encabezado">
+            <img src="/assets/logo.svg" alt="Instituto Universe" class="boletin-logo" />
+            <div>
+              <div class="boletin-titulo">${TIPO[a.tipo]} N.º ${a.id}</div>
+              <div class="boletin-datos">Instituto Universe · Nivel Secundario · <span class="estado-paso ${a.estado === 'realizada' ? 'publicado' : a.estado === 'cancelada' ? 'vencido' : 'abierto'}">${ESTADO[a.estado]}</span></div>
+            </div>
+          </div>
+
+          <dl class="acta-datos">
+            <div><dt>Fecha</dt><dd>${fechaLarga(a.fecha)}${a.hora ? ` · ${esc(a.hora)} h` : ''}</dd></div>
+            <div><dt>Lugar</dt><dd>${esc(a.lugar || '—')}</dd></div>
+            ${a.alumno ? `<div><dt>Alumno/a</dt><dd>${esc(a.alumno.apellido)}, ${esc(a.alumno.nombre)} · DNI ${esc(a.alumno.documento || '—')}</dd></div>` : ''}
+            ${a.curso ? `<div><dt>Curso</dt><dd>${esc(a.curso)}</dd></div>` : ''}
+            <div><dt>Motivo</dt><dd><strong>${esc(a.asunto)}</strong></dd></div>
+            <div><dt>Convoca</dt><dd>${esc(a.creadoNombre || '—')}</dd></div>
+          </dl>
+
+          <form id="form-acta">
+            ${ed ? `
+              <div class="fila-doble no-imprimir">
+                <div class="campo"><label>Fecha</label><input type="date" name="fecha" value="${a.fecha}" /></div>
+                <div class="campo"><label>Hora</label><input type="time" name="hora" value="${a.hora || ''}" /></div>
+              </div>
+              <div class="campo no-imprimir"><label>Lugar</label><input type="text" name="lugar" maxlength="120" value="${esc(a.lugar || '')}" /></div>
+              <div class="campo no-imprimir"><label>Motivo</label><input type="text" name="asunto" maxlength="300" value="${esc(a.asunto)}" /></div>` : ''}
+            ${campo('convocados', 'Convocados', a.convocados, 2)}
+            ${campo('presentes', 'Presentes', a.presentes, 2, 'Quiénes asistieron (nombre y rol)')}
+            ${campo('desarrollo', 'Desarrollo de la reunión', a.desarrollo, 6, 'Qué se habló, situación planteada, intervenciones…')}
+            ${campo('acuerdos', 'Acuerdos y compromisos', a.acuerdos, 4, 'Lo que se acordó, responsables y plazos. Las familias lo ven cuando el acta está realizada.')}
+            ${ed ? `
+              <div class="acta-acciones no-imprimir">
+                <button type="submit" class="boton boton-primario">Guardar</button>
+                ${a.estado !== 'realizada' ? '<button type="button" class="boton boton-primario" data-estado="realizada">Guardar como realizada</button>' : ''}
+                ${a.estado === 'programada' ? '<button type="button" class="btn-mini peligro" data-estado="cancelada">Cancelar citación</button>' : ''}
+                ${a.estado !== 'programada' ? '<button type="button" class="btn-mini" data-estado="programada">Volver a programada</button>' : ''}
+                <button type="button" class="btn-mini peligro" id="btn-eliminar">Eliminar</button>
+              </div>` : ''}
+          </form>
+
+          <div class="firmas">
+            <div><span></span>Por el Instituto</div>
+            <div><span></span>Adulto responsable</div>
+            <div><span></span>Aclaración y DNI</div>
+          </div>
+        </article>
+
+        ${a.alumno ? `
+          <section class="anio-bloque no-imprimir" style="margin-top:1.2rem">
+            <span class="sub-titulo">Familias con vínculo aprobado</span>
+            ${datos.familias.length ? `<ul class="lista-familias">${datos.familias.map((f) => `
+              <li>
+                <span><strong>${esc(f.nombre)}</strong> <span class="codigo-meta">${esc(f.parentesco || '')} · ${esc(f.email || '')}</span></span>
+                ${f.notificado
+                  ? `<span class="nivel-faltas ${f.notificado.respuesta === 'no_puedo' ? 'nivel-atencion' : 'nivel-normal'}">${f.notificado.respuesta === 'no_puedo' ? 'No puede asistir' : f.notificado.respuesta === 'asistire' ? 'Asistirá' : 'Notificado'} · ${fechaHora(f.notificado.en)}</span>
+                     ${f.notificado.comentario ? `<span class="codigo-meta">"${esc(f.notificado.comentario)}"</span>` : ''}`
+                  : '<span class="nivel-faltas nivel-atencion">Todavía no se notificó</span>'}
+              </li>`).join('')}</ul>`
+            : '<p class="ayuda-campo">El alumno no tiene familias con vínculo aprobado en la plataforma: avisá por otro medio (cuaderno de comunicaciones, teléfono).</p>'}
+          </section>` : ''}
+
+        <div class="filtros-asistencia no-imprimir">
+          <button class="boton boton-primario" id="btn-imprimir" type="button">Imprimir acta</button>
+        </div>`;
+
+      const form = document.getElementById('form-acta');
+      const guardar = async (extra) => {
+        const body = Object.fromEntries(new FormData(form).entries());
+        try {
+          const r = await api('PUT', `/api/actas/${id}`, { ...body, ...extra });
+          App.toast(r.message);
+          await cargar();
+        } catch (error) { App.toast(error.message); }
+      };
+      form.addEventListener('submit', (e) => { e.preventDefault(); guardar({}); });
+      form.querySelectorAll('[data-estado]').forEach((b) => b.addEventListener('click', () => guardar({ estado: b.dataset.estado })));
+      const del = document.getElementById('btn-eliminar');
+      if (del) del.addEventListener('click', async () => {
+        if (!confirm('¿Eliminar esta acta? No se puede deshacer.')) return;
+        try { await api('DELETE', `/api/actas/${id}`); location.href = '/actas.html'; } catch (e) { App.toast(e.message); }
+      });
+      document.getElementById('btn-imprimir').addEventListener('click', () => window.print());
+    }
+
+    async function cargar() {
+      try {
+        datos = await api('GET', `/api/actas/${id}`);
+        render();
+      } catch (error) {
+        document.getElementById('contenido').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    let temaPrevio = null;
+    window.addEventListener('beforeprint', () => { temaPrevio = document.documentElement.dataset.tema; document.documentElement.dataset.tema = 'claro'; });
+    window.addEventListener('afterprint', () => { if (temaPrevio) document.documentElement.dataset.tema = temaPrevio; });
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (!id) { document.getElementById('contenido').innerHTML = '<p class="cargando">Falta indicar el acta.</p>'; return; }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

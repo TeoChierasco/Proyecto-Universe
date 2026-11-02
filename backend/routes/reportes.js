@@ -11,6 +11,8 @@
 const express = require('express');
 const { supabaseAdmin } = require('../config/supabase');
 const requireAuth = require('../middleware/requireAuth');
+const { traerTodo } = require('../utils/consultas');
+const reglasAsistencia = require('../config/asistencia');
 
 const router = express.Router();
 
@@ -25,26 +27,6 @@ router.use(requireAuth, (req, res, next) => {
   }
   next();
 });
-
-/**
- * Supabase devuelve como máximo 1000 filas por consulta: esta función
- * pide de a páginas hasta traer todo. `armar` recibe nada y devuelve
- * una consulta nueva (sin .range()).
- */
-async function traerTodo(armar, { opcional = false } = {}) {
-  const PAGINA = 1000;
-  const filas = [];
-  for (let desde = 0; ; desde += PAGINA) {
-    const { data, error } = await armar().range(desde, desde + PAGINA - 1);
-    if (error) {
-      if (opcional) return [];
-      throw error;
-    }
-    filas.push(...data);
-    if (data.length < PAGINA) break;
-  }
-  return filas;
-}
 
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 function haceDias(n) {
@@ -113,6 +95,8 @@ router.get('/resumen', async (req, res) => {
       traerTodo(() => supabaseAdmin.from('calificaciones').select('alumno_id, materia_id, curso_id, periodo, nota').eq('ciclo', ciclo), { opcional: true }),
       traerTodo(() => supabaseAdmin.from('movimientos_alumnos').select('tipo, fecha').gte('fecha', `${ciclo}-01-01`), { opcional: true }),
     ]);
+    const asistCiclo = await traerTodo(() => supabaseAdmin.from('asistencias')
+      .select('alumno_id, estado, justificada').gte('fecha', `${ciclo}-01-01`).lte('fecha', `${ciclo}-12-31`), { opcional: true });
 
     const idsActivos = new Set(b.activos.map((a) => a.id));
     const sinCurso = b.activos.filter((a) => !b.cursoDe[a.id]).length;
@@ -160,6 +144,13 @@ router.get('/resumen', async (req, res) => {
     const enRiesgo = Object.values(desaprobadasDe).filter((n) => n >= UMBRAL_RIESGO).length;
     const conAlgunaDesaprobada = Object.keys(desaprobadasDe).length;
 
+    // Cómputo de inasistencias del ciclo: alumnos cerca o por encima del tope.
+    const regsDe = {};
+    asistCiclo.forEach((r) => { if (idsActivos.has(r.alumno_id)) (regsDe[r.alumno_id] = regsDe[r.alumno_id] || []).push(r); });
+    const niveles = Object.values(regsDe).map((regs) => reglasAsistencia.computar(regs).nivel);
+    const excedidos = niveles.filter((n) => n === 'excedido').length;
+    const criticos = niveles.filter((n) => n === 'critico').length;
+
     const kpis = {
       alumnosActivos: b.activos.length,
       profesores: b.perfiles.filter((p) => p.rol === 'profesor').length,
@@ -173,12 +164,16 @@ router.get('/resumen', async (req, res) => {
       sinCurso,
       enRiesgo,
       conAlgunaDesaprobada,
+      inasistenciasExcedidas: excedidos,
+      inasistenciasCriticas: criticos,
       bajas: movs.filter((m) => m.tipo === 'baja').length,
       pases: movs.filter((m) => m.tipo === 'pase').length,
     };
 
     // Alertas: lo que alguien tiene que resolver.
     const alertas = [];
+    if (excedidos) alertas.push({ nivel: 'serious', texto: `${excedidos} alumno(s) superaron el tope de ${reglasAsistencia.LIMITE_ANUAL} inasistencias`, link: '/reportes.html#asistencia' });
+    if (criticos) alertas.push({ nivel: 'warning', texto: `${criticos} alumno(s) con ${reglasAsistencia.NIVEL_CRITICO} o más inasistencias (cerca del tope)`, link: '/reportes.html#asistencia' });
     if (kpis.vinculosPendientes) alertas.push({ nivel: 'warning', texto: `${kpis.vinculosPendientes} solicitud(es) de vínculo familiar pendientes`, link: '/vinculos.html' });
     if (sinCurso) alertas.push({ nivel: 'warning', texto: `${sinCurso} alumno(s) activos sin curso asignado`, link: '/alumnos.html' });
     if (materiasSinDocente) alertas.push({ nivel: 'warning', texto: `${materiasSinDocente} materia(s) sin docente asignado`, link: '/cursos.html' });
@@ -190,7 +185,7 @@ router.get('/resumen', async (req, res) => {
       alertas.push({ nivel: 'info', texto: `${cursosSinLista} curso(s) todavía sin asistencia tomada hoy`, link: '/asistencia.html' });
     }
 
-    return res.json({ ok: true, ciclo, fecha: hoy, kpis, asistenciaPorCurso: porCurso, alertas, notaAprobacion: NOTA_APROBACION });
+    return res.json({ ok: true, ciclo, fecha: hoy, kpis, asistenciaPorCurso: porCurso, alertas, notaAprobacion: NOTA_APROBACION, limiteInasistencias: reglasAsistencia.LIMITE_ANUAL });
   } catch (e) {
     return res.status(500).json({ ok: false, error: 'No pudimos armar el resumen.' });
   }
@@ -206,6 +201,12 @@ router.get('/asistencia', async (req, res) => {
     const b = await base();
     const regs = await traerTodo(() => supabaseAdmin.from('asistencias')
       .select('alumno_id, fecha, estado, justificada').gte('fecha', desde).lte('fecha', hasta));
+    // Cómputo anual (ciclo de la fecha "hasta"), para comparar con el tope.
+    const cicloHasta = parseInt(hasta.slice(0, 4), 10);
+    const anual = await traerTodo(() => supabaseAdmin.from('asistencias')
+      .select('alumno_id, estado, justificada').gte('fecha', `${cicloHasta}-01-01`).lte('fecha', hasta));
+    const anualDe = {};
+    anual.forEach((r) => { (anualDe[r.alumno_id] = anualDe[r.alumno_id] || []).push(r); });
 
     const idsActivos = new Set(b.activos.map((a) => a.id));
     const validos = regs.filter((r) => idsActivos.has(r.alumno_id));
@@ -213,7 +214,9 @@ router.get('/asistencia', async (req, res) => {
       registros: lista.length,
       presentes: lista.filter((r) => r.estado === 'presente').length,
       ausentes: lista.filter((r) => r.estado === 'ausente').length,
+      tardes: lista.filter((r) => r.estado === 'tarde').length,
       retirados: lista.filter((r) => r.estado === 'retirado').length,
+      faltas: reglasAsistencia.computar(lista).faltas,
       justificadas: lista.filter((r) => r.estado === 'ausente' && r.justificada).length,
     });
 
@@ -225,18 +228,22 @@ router.get('/asistencia', async (req, res) => {
 
     const porAlumno = b.activos.map((a) => {
       const t = contar(validos.filter((r) => r.alumno_id === a.id));
+      const anio = reglasAsistencia.computar(anualDe[a.id] || []);
       return {
+        id: a.id,
         alumno: `${a.apellido}, ${a.nombre}`,
         curso: cursoLabel(b.curso[b.cursoDe[a.id]]),
         ...t,
         injustificadas: t.ausentes - t.justificadas,
         presentismo: pct(t.registros - t.ausentes, t.registros),
+        faltasCiclo: anio.faltas,
+        nivel: anio.nivel,
       };
-    }).filter((a) => a.ausentes > 0 || a.retirados > 0)
-      .sort((x, y) => y.ausentes - x.ausentes || y.injustificadas - x.injustificadas);
+    }).filter((a) => a.ausentes > 0 || a.retirados > 0 || a.tardes > 0 || a.faltasCiclo > 0)
+      .sort((x, y) => y.faltasCiclo - x.faltasCiclo || y.faltas - x.faltas);
 
     const total = contar(validos);
-    return res.json({ ok: true, desde, hasta, total: { ...total, presentismo: pct(total.registros - total.ausentes, total.registros) }, porCurso, porAlumno });
+    return res.json({ ok: true, desde, hasta, limite: reglasAsistencia.LIMITE_ANUAL, ciclo: cicloHasta, total: { ...total, presentismo: pct(total.registros - total.ausentes, total.registros) }, porCurso, porAlumno });
   } catch (e) {
     return res.status(500).json({ ok: false, error: 'No pudimos armar el reporte de asistencia. ¿Está creada la tabla de asistencia?' });
   }

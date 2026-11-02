@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Cierre de notas</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1>Cierre de <span class="destello">notas</span></h1>
+          <p class="subtitulo">Controlá la carga, cerrá cada trimestre y emití los boletines</p>
+        </div>
+
+        <div class="filtros-asistencia" id="filtros" hidden>
+          <select class="input-mini" id="ciclo"></select>
+          <a class="btn-mini" href="/boletines.html">Imprimir boletines por curso</a>
+        </div>
+
+        <ol class="pasos-cierre lista-ancha" id="pasos" hidden>
+          <li><strong>1. Fecha límite:</strong> hasta ese día los profesores cargan notas.</li>
+          <li><strong>2. Cerrar carga:</strong> los profesores ya no pueden modificar el trimestre (Secretaría sí, para correcciones).</li>
+          <li><strong>3. Emitir boletines:</strong> alumnos y familias ven las notas del trimestre y se publica un aviso en Comunicados.</li>
+        </ol>
+
+        <div class="periodos-cierre lista-ancha" id="contenido">
+          <p class="cargando">Cargando períodos…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const anio = new Date().getFullYear();
+    let datos = null;
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    const porc = (n) => (n == null ? '—' : `${String(n).replace('.', ',')} %`);
+    function fechaHora(iso) {
+      return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+
+    async function api(metodo, ruta, body) {
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${App.obtenerToken()}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function estadoTexto(p) {
+      if (p.publicado) return '<span class="estado-paso publicado">Boletín emitido</span>';
+      if (p.cerrado) return '<span class="estado-paso cerrado">Carga cerrada</span>';
+      if (p.vencido) return '<span class="estado-paso vencido">Fecha límite vencida</span>';
+      return '<span class="estado-paso abierto">Carga abierta</span>';
+    }
+
+    function render() {
+      const cont = document.getElementById('contenido');
+      if (datos.sinTabla) {
+        cont.innerHTML = '<p class="cargando">Para usar el cierre de notas corré <strong>backend/db/cierre.sql</strong> en Supabase. Mientras tanto, todas las notas se ven publicadas.</p>';
+        return;
+      }
+      cont.innerHTML = datos.periodos.map((p) => `
+        <section class="periodo-card ${p.publicado ? 'es-publicado' : p.cerrado ? 'es-cerrado' : ''}">
+          <div class="periodo-cabecera">
+            <div>
+              <h2 class="titulo-tarjeta" style="margin:0">${esc(p.nombre)}</h2>
+              ${estadoTexto(p)}
+              ${p.cerradoEn ? `<span class="codigo-meta"> · cerrado el ${fechaHora(p.cerradoEn)}</span>` : ''}
+              ${p.publicadoEn ? `<span class="codigo-meta"> · emitido el ${fechaHora(p.publicadoEn)}</span>` : ''}
+            </div>
+            <label class="filtro-etiqueta">Fecha límite
+              <input type="date" class="input-mini" data-fecha="${p.id}" value="${p.fechaLimite || ''}" ${p.cerrado ? 'disabled' : ''} />
+            </label>
+          </div>
+
+          <div class="avance">
+            <div class="avance-texto"><strong>${porc(p.avance)}</strong> de las notas cargadas
+              <span class="codigo-meta">(${p.cargadas} de ${p.esperadas})</span></div>
+            <div class="medidor"><span style="width:${p.avance || 0}%"></span></div>
+          </div>
+
+          ${p.incompletas.length ? `
+            <details class="incompletas" ${p.cerrado ? '' : 'open'}>
+              <summary>${p.incompletas.length} planilla(s) incompleta(s)</summary>
+              <ul>
+                ${p.incompletas.map((i) => `
+                  <li>
+                    <span><strong>${esc(i.curso)}</strong> · ${esc(i.materia)} <span class="codigo-meta">· ${esc(i.profesor)}</span></span>
+                    <span class="incompleta-acciones">
+                      <span class="codigo-meta">${i.cargadas}/${i.alumnos}</span>
+                      <a class="btn-mini" href="/notas.html?asignacion=${i.asignacionId}">Abrir planilla</a>
+                    </span>
+                  </li>`).join('')}
+              </ul>
+            </details>` : (p.esperadas ? '<p class="ayuda-campo">Todas las planillas están completas.</p>' : '<p class="ayuda-campo">No hay materias asignadas con alumnos.</p>')}
+
+          <div class="periodo-acciones">
+            ${!p.cerrado ? `<button class="boton boton-primario" data-accion="cerrar" data-periodo="${p.id}">Cerrar carga</button>` : ''}
+            ${p.cerrado && !p.publicado ? `<button class="boton boton-primario" data-accion="publicar" data-periodo="${p.id}">Emitir boletines</button>` : ''}
+            ${p.publicado ? `<button class="btn-mini" data-accion="despublicar" data-periodo="${p.id}">Ocultar boletines</button>` : ''}
+            ${p.cerrado ? `<button class="btn-mini peligro" data-accion="reabrir" data-periodo="${p.id}">Reabrir carga</button>` : ''}
+          </div>
+        </section>`).join('');
+
+      cont.querySelectorAll('[data-accion]').forEach((b) => b.addEventListener('click', () => accion(b.dataset.periodo, b.dataset.accion)));
+      cont.querySelectorAll('[data-fecha]').forEach((i) => i.addEventListener('change', () => accion(i.dataset.fecha, 'fecha', i.value)));
+    }
+
+    const CONFIRMAR = {
+      cerrar: (p) => `¿Cerrar la carga del ${p.nombre}? Los profesores ya no podrán modificar esas notas.${p.incompletas.length ? `\n\nAtención: hay ${p.incompletas.length} planilla(s) incompleta(s).` : ''}`,
+      publicar: (p) => `¿Emitir los boletines del ${p.nombre}? Alumnos y familias van a ver las notas y se publicará un aviso en Comunicados.`,
+      reabrir: (p) => `¿Reabrir la carga del ${p.nombre}? Si el boletín estaba emitido, se va a ocultar hasta que lo vuelvas a emitir.`,
+    };
+
+    async function accion(periodo, que, fecha) {
+      const p = datos.periodos.find((x) => x.id === periodo);
+      if (CONFIRMAR[que] && !confirm(CONFIRMAR[que](p))) return;
+      try {
+        const r = await api('PUT', `/api/calificaciones/periodos/${periodo}`, { ciclo: datos.ciclo, accion: que, fechaLimite: fecha });
+        App.toast(r.message);
+        await cargar();
+      } catch (error) { App.toast(error.message); }
+    }
+
+    async function cargar() {
+      try {
+        datos = await api('GET', `/api/calificaciones/periodos?ciclo=${document.getElementById('ciclo').value}`);
+        document.getElementById('pasos').hidden = datos.sinTabla;
+        render();
+      } catch (error) {
+        document.getElementById('contenido').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    document.getElementById('ciclo').innerHTML = [anio, anio - 1].map((a) => `<option value="${a}">Ciclo ${a}</option>`).join('');
+    document.getElementById('ciclo').addEventListener('change', cargar);
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'secretaria' && usuario.rol !== 'director') {
+        document.getElementById('contenido').innerHTML = '<p class="cargando">Esta sección es para Secretaría y Dirección.</p>';
+        return;
+      }
+      document.getElementById('filtros').hidden = false;
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

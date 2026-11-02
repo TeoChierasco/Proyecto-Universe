@@ -10,11 +10,20 @@
  *     - el propio alumno, sus padres/tutores con vínculo APROBADO,
  *       Secretaría y Dirección.
  *
- * Tabla: calificaciones (ver backend/db/calificaciones.sql).
+ *   Cierre y emisión (Secretaría / Dirección):
+ *     - GET /periodos                → estado de cada trimestre + avance de carga.
+ *     - PUT /periodos/:periodo       → cerrar / reabrir / publicar / despublicar / fecha límite.
+ *     - GET /boletines-curso/:curso  → todos los boletines de un curso (para imprimir).
+ *   Un período cerrado (o con la fecha límite vencida) ya no lo puede editar el
+ *   profesor. Alumnos y familias solo ven las notas de períodos PUBLICADOS.
+ *
+ * Tablas: calificaciones (calificaciones.sql) y periodos_estado (cierre.sql).
  */
 const express = require('express');
 const { supabaseAdmin } = require('../config/supabase');
 const requireAuth = require('../middleware/requireAuth');
+
+const { traerTodo } = require('../utils/consultas');
 
 const router = express.Router();
 
@@ -34,6 +43,33 @@ const IDS_PERIODO = PERIODOS.map((p) => p.id);
 function cicloDe(req) {
   const c = parseInt(req.query.ciclo || (req.body && req.body.ciclo), 10);
   return c >= 2000 && c <= 2100 ? c : new Date().getFullYear();
+}
+
+/**
+ * Estado de los períodos de un ciclo: { '1': { cerrado, publicado, fechaLimite, vencido, bloqueado } }.
+ * Si la tabla periodos_estado no existe (falta cierre.sql), todo queda
+ * abierto y publicado, como funcionaba antes.
+ */
+async function estadoPeriodos(ciclo) {
+  const { data, error } = await supabaseAdmin
+    .from('periodos_estado').select('periodo, fecha_limite, cerrado, publicado, cerrado_en, publicado_en').eq('ciclo', ciclo);
+  const sinTabla = !!error;
+  const hoy = new Date().toISOString().slice(0, 10);
+  const r = {};
+  PERIODOS.forEach((p) => {
+    const f = (data || []).find((x) => x.periodo === p.id) || {};
+    const vencido = !!(f.fecha_limite && hoy > f.fecha_limite);
+    r[p.id] = {
+      cerrado: !!f.cerrado,
+      publicado: sinTabla ? true : !!f.publicado,
+      fechaLimite: f.fecha_limite || null,
+      vencido,
+      bloqueado: !!f.cerrado || vencido,
+      cerradoEn: f.cerrado_en || null,
+      publicadoEn: f.publicado_en || null,
+    };
+  });
+  return { estados: r, sinTabla };
 }
 
 function promedio(notas) {
@@ -72,7 +108,9 @@ router.get('/mis-cursos', requireAuth, async (req, res) => {
     .select('id, materia_id, curso_id, horas_semanales')
     .eq('profesor_id', req.userId);
   if (error) return res.status(500).json({ ok: false, error: 'No pudimos cargar tus cursos. ¿Está creada la tabla de asignaciones?' });
-  if (!asig.length) return res.json({ ok: true, asignaciones: [], periodos: PERIODOS, ciclo });
+  const { estados } = await estadoPeriodos(ciclo);
+  const periodosConEstado = PERIODOS.map((p) => ({ ...p, ...estados[p.id] }));
+  if (!asig.length) return res.json({ ok: true, asignaciones: [], periodos: periodosConEstado, ciclo });
 
   const materiaIds = [...new Set(asig.map((a) => a.materia_id))];
   const cursoIds = [...new Set(asig.map((a) => a.curso_id))];
@@ -106,7 +144,7 @@ router.get('/mis-cursos', requireAuth, async (req, res) => {
     };
   }).sort((x, y) => (x.anio - y.anio) || String(x.curso).localeCompare(String(y.curso)) || x.materia.localeCompare(y.materia));
 
-  return res.json({ ok: true, asignaciones, periodos: PERIODOS, ciclo });
+  return res.json({ ok: true, asignaciones, periodos: periodosConEstado, ciclo });
 });
 
 // GET /api/calificaciones/planilla/:asignacion — alumnos + notas de una materia en un curso.
@@ -146,10 +184,11 @@ router.get('/planilla/:asignacion', requireAuth, async (req, res) => {
     return { id: a.id, nombre: a.nombre, apellido: a.apellido, notas, promedio: promedio(Object.values(notas)) };
   });
 
+  const { estados } = await estadoPeriodos(ciclo);
   return res.json({
     ok: true,
     ciclo,
-    periodos: PERIODOS,
+    periodos: PERIODOS.map((p) => ({ ...p, ...estados[p.id], editable: esAdmin(req) || !estados[p.id].bloqueado })),
     notaAprobacion: NOTA_APROBACION,
     materia: matRes.data ? matRes.data.nombre : 'Materia',
     curso: cursoLabel(curRes.data),
@@ -177,6 +216,16 @@ router.put('/planilla/:asignacion', requireAuth, async (req, res) => {
     .from('inscripciones').select('alumno_id').eq('curso_id', asig.curso_id);
   if (insErr) return res.status(500).json({ ok: false, error: 'No pudimos validar los alumnos.' });
   const delCurso = new Set(ins.map((i) => i.alumno_id));
+
+  // Períodos cerrados o vencidos: el profesor ya no puede modificarlos.
+  const { estados } = await estadoPeriodos(ciclo);
+  if (!esAdmin(req)) {
+    const bloqueado = cambios.find((c) => estados[String(c.periodo)] && estados[String(c.periodo)].bloqueado);
+    if (bloqueado) {
+      const p = PERIODOS.find((x) => x.id === String(bloqueado.periodo));
+      return res.status(400).json({ ok: false, error: `La carga del ${p ? p.nombre : 'período'} está cerrada. Pedí a Secretaría que la reabra si necesitás corregir.` });
+    }
+  }
 
   const guardar = [];
   const borrar = [];
@@ -236,6 +285,37 @@ async function puedeVerBoletin(req, alumnoId) {
   return false;
 }
 
+/**
+ * Arma el boletín de un alumno. Con soloPublicados, las notas de los
+ * períodos no publicados se ocultan (alumnos y familias).
+ */
+function armarBoletin({ alumno, curso, notas, materiasAnio, materiasConNota, estados, soloPublicados, ciclo }) {
+  const visibles = notas.filter((n) => !soloPublicados || (estados[n.periodo] && estados[n.periodo].publicado));
+  const materiasMap = new Map();
+  [...materiasAnio, ...materiasConNota].forEach((m) => materiasMap.set(m.id, m));
+
+  const materias = [...materiasMap.values()]
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+    .map((m) => {
+      const ns = {};
+      visibles.filter((n) => n.materia_id === m.id).forEach((n) => { ns[n.periodo] = Number(n.nota); });
+      return { id: m.id, nombre: m.nombre, notas: ns, promedio: promedio(Object.values(ns)) };
+    });
+
+  const promedios = materias.map((m) => m.promedio).filter((p) => p !== null);
+  return {
+    ciclo,
+    periodos: PERIODOS.map((p) => ({ ...p, publicado: estados[p.id].publicado, cerrado: estados[p.id].cerrado })),
+    notaAprobacion: NOTA_APROBACION,
+    alumno: { id: alumno.id, nombre: alumno.nombre, apellido: alumno.apellido, documento: alumno.documento },
+    curso: cursoLabel(curso),
+    materias,
+    promedioGeneral: promedio(promedios),
+    materiasDesaprobadas: materias.filter((m) => m.promedio !== null && m.promedio < NOTA_APROBACION).length,
+    soloPublicados,
+  };
+}
+
 // GET /api/calificaciones/boletin/:alumnoId?ciclo= — boletín del alumno.
 // Con alumnoId = "yo" el alumno ve el suyo.
 router.get('/boletin/:alumnoId', requireAuth, async (req, res) => {
@@ -245,10 +325,11 @@ router.get('/boletin/:alumnoId', requireAuth, async (req, res) => {
   }
   const ciclo = cicloDe(req);
 
-  const [perRes, insRes, notRes] = await Promise.all([
+  const [perRes, insRes, notRes, est] = await Promise.all([
     supabaseAdmin.from('perfiles').select('id, nombre, apellido, documento, rol').eq('id', alumnoId).maybeSingle(),
     supabaseAdmin.from('inscripciones').select('curso_id').eq('alumno_id', alumnoId).maybeSingle(),
     supabaseAdmin.from('calificaciones').select('materia_id, periodo, nota').eq('alumno_id', alumnoId).eq('ciclo', ciclo),
+    estadoPeriodos(ciclo),
   ]);
   if (perRes.error || !perRes.data || perRes.data.rol !== 'alumno') {
     return res.status(404).json({ ok: false, error: 'Alumno no encontrado.' });
@@ -268,30 +349,166 @@ router.get('/boletin/:alumnoId', requireAuth, async (req, res) => {
     curso ? supabaseAdmin.from('materias').select('id, nombre').eq('anio', curso.anio).order('nombre') : Promise.resolve({ data: [] }),
     materiaIdsConNota.length ? supabaseAdmin.from('materias').select('id, nombre').in('id', materiaIdsConNota) : Promise.resolve({ data: [] }),
   ]);
-  const materiasMap = new Map();
-  [...(matAnio.data || []), ...(matNota.data || [])].forEach((m) => materiasMap.set(m.id, m));
 
-  const materias = [...materiasMap.values()]
-    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
-    .map((m) => {
-      const notas = {};
-      notRes.data.filter((n) => n.materia_id === m.id).forEach((n) => { notas[n.periodo] = Number(n.nota); });
-      const prom = promedio(Object.values(notas));
-      return { id: m.id, nombre: m.nombre, notas, promedio: prom };
-    });
-
-  const promedios = materias.map((m) => m.promedio).filter((p) => p !== null);
   return res.json({
     ok: true,
-    ciclo,
-    periodos: PERIODOS,
-    notaAprobacion: NOTA_APROBACION,
-    alumno: { id: perRes.data.id, nombre: perRes.data.nombre, apellido: perRes.data.apellido, documento: perRes.data.documento },
-    curso: cursoLabel(curso),
-    materias,
-    promedioGeneral: promedio(promedios),
-    materiasDesaprobadas: materias.filter((m) => m.promedio !== null && m.promedio < NOTA_APROBACION).length,
+    ...armarBoletin({
+      alumno: perRes.data, curso, notas: notRes.data,
+      materiasAnio: matAnio.data || [], materiasConNota: matNota.data || [],
+      estados: est.estados, soloPublicados: !esAdmin(req), ciclo,
+    }),
   });
+});
+
+// ============================================================
+//  Cierre de notas y emisión de boletines (Secretaría / Dirección)
+// ============================================================
+
+// GET /api/calificaciones/periodos?ciclo= — estado y avance de carga de cada período.
+router.get('/periodos', requireAuth, async (req, res) => {
+  if (!esAdmin(req)) return res.status(403).json({ ok: false, error: 'Solo Secretaría y Dirección.' });
+  const ciclo = cicloDe(req);
+  try {
+    const [{ estados, sinTabla }, asig, ins, notas, cursos, materias] = await Promise.all([
+      estadoPeriodos(ciclo),
+      traerTodo(() => supabaseAdmin.from('docente_asignaciones').select('id, profesor_id, materia_id, curso_id')),
+      traerTodo(() => supabaseAdmin.from('inscripciones').select('alumno_id, curso_id')),
+      traerTodo(() => supabaseAdmin.from('calificaciones').select('alumno_id, materia_id, curso_id, periodo').eq('ciclo', ciclo)),
+      traerTodo(() => supabaseAdmin.from('cursos').select('id, anio, division')),
+      traerTodo(() => supabaseAdmin.from('materias').select('id, nombre')),
+    ]);
+    const profIds = [...new Set(asig.map((a) => a.profesor_id))];
+    const profs = profIds.length ? (await supabaseAdmin.from('perfiles').select('id, nombre, apellido').in('id', profIds)).data || [] : [];
+
+    const alumnosDe = {};
+    ins.forEach((i) => { (alumnosDe[i.curso_id] = alumnosDe[i.curso_id] || new Set()).add(i.alumno_id); });
+
+    const periodos = PERIODOS.map((p) => {
+      let esperadas = 0;
+      let cargadas = 0;
+      const incompletas = [];
+      asig.forEach((a) => {
+        const alumnos = alumnosDe[a.curso_id] || new Set();
+        if (!alumnos.size) return;
+        const conNota = new Set(notas
+          .filter((n) => n.periodo === p.id && n.materia_id === a.materia_id && alumnos.has(n.alumno_id))
+          .map((n) => n.alumno_id)).size;
+        esperadas += alumnos.size;
+        cargadas += conNota;
+        if (conNota < alumnos.size) {
+          const c = cursos.find((x) => x.id === a.curso_id);
+          const pr = profs.find((x) => x.id === a.profesor_id);
+          incompletas.push({
+            asignacionId: a.id,
+            curso: cursoLabel(c),
+            anio: c ? c.anio : 99,
+            materia: (materias.find((m) => m.id === a.materia_id) || {}).nombre || 'Materia',
+            profesor: pr ? `${pr.apellido}, ${pr.nombre}` : '—',
+            cargadas: conNota,
+            alumnos: alumnos.size,
+          });
+        }
+      });
+      incompletas.sort((x, y) => x.anio - y.anio || x.curso.localeCompare(y.curso) || x.materia.localeCompare(y.materia, 'es'));
+      return {
+        ...p, ...estados[p.id],
+        esperadas, cargadas,
+        avance: esperadas ? Math.round((cargadas / esperadas) * 1000) / 10 : null,
+        incompletas,
+      };
+    });
+
+    return res.json({ ok: true, ciclo, sinTabla, periodos });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: 'No pudimos cargar el estado de los períodos.' });
+  }
+});
+
+// PUT /api/calificaciones/periodos/:periodo — body: { ciclo, accion, fechaLimite }
+//   accion: 'cerrar' | 'reabrir' | 'publicar' | 'despublicar' | 'fecha'
+router.put('/periodos/:periodo', requireAuth, async (req, res) => {
+  if (!esAdmin(req)) return res.status(403).json({ ok: false, error: 'Solo Secretaría y Dirección.' });
+  const periodo = String(req.params.periodo);
+  const p = PERIODOS.find((x) => x.id === periodo);
+  if (!p) return res.status(400).json({ ok: false, error: 'Período no válido.' });
+  const ciclo = cicloDe(req);
+  const accion = req.body.accion;
+  const ahora = new Date().toISOString();
+
+  const { data: actual, error: errActual } = await supabaseAdmin
+    .from('periodos_estado').select('*').eq('ciclo', ciclo).eq('periodo', periodo).maybeSingle();
+  if (errActual) {
+    return res.status(500).json({ ok: false, error: 'Falta crear la tabla de períodos (corré backend/db/cierre.sql en Supabase).' });
+  }
+  const fila = { ciclo, periodo, ...(actual || {}) };
+
+  let mensaje = '';
+  if (accion === 'cerrar') {
+    Object.assign(fila, { cerrado: true, cerrado_por: req.userId, cerrado_en: ahora });
+    mensaje = `Carga del ${p.nombre} cerrada.`;
+  } else if (accion === 'reabrir') {
+    Object.assign(fila, { cerrado: false, cerrado_por: null, cerrado_en: null, publicado: false, publicado_por: null, publicado_en: null });
+    mensaje = `${p.nombre} reabierto. Se despublicó el boletín hasta que lo vuelvas a emitir.`;
+  } else if (accion === 'publicar') {
+    if (!fila.cerrado) return res.status(400).json({ ok: false, error: 'Primero cerrá la carga de notas del período.' });
+    Object.assign(fila, { publicado: true, publicado_por: req.userId, publicado_en: ahora });
+    mensaje = `Boletines del ${p.nombre} emitidos: ya los ven alumnos y familias.`;
+  } else if (accion === 'despublicar') {
+    Object.assign(fila, { publicado: false, publicado_por: null, publicado_en: null });
+    mensaje = `Se ocultaron los boletines del ${p.nombre}.`;
+  } else if (accion === 'fecha') {
+    const f = String(req.body.fechaLimite || '');
+    fila.fecha_limite = /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : null;
+    mensaje = fila.fecha_limite ? 'Fecha límite guardada.' : 'Se quitó la fecha límite.';
+  } else {
+    return res.status(400).json({ ok: false, error: 'Acción no válida.' });
+  }
+
+  const { error } = await supabaseAdmin.from('periodos_estado').upsert(fila, { onConflict: 'ciclo,periodo' });
+  if (error) return res.status(500).json({ ok: false, error: 'No pudimos actualizar el período.' });
+
+  // Al emitir boletines, aviso en la cartelera para alumnos y familias.
+  if (accion === 'publicar' && req.body.avisar !== false) {
+    await supabaseAdmin.from('comunicados').insert({
+      titulo: `Boletines del ${p.nombre} ${ciclo}`,
+      cuerpo: `Ya están disponibles las calificaciones del ${p.nombre}. Podés verlas en "Calificaciones" (alumnos) o en "Mis hijos/as → Ver boletín" (familias).`,
+      audiencia: 'todos',
+      autor_id: req.userId,
+      autor_nombre: `${req.perfil.nombre} ${req.perfil.apellido}`,
+      autor_rol: req.perfil.rol,
+    });
+  }
+
+  return res.json({ ok: true, message: mensaje });
+});
+
+// GET /api/calificaciones/boletines-curso/:cursoId?ciclo= — todos los boletines de un curso.
+router.get('/boletines-curso/:cursoId', requireAuth, async (req, res) => {
+  if (!esAdmin(req)) return res.status(403).json({ ok: false, error: 'Solo Secretaría y Dirección.' });
+  const ciclo = cicloDe(req);
+  const cursoId = Number(req.params.cursoId);
+  try {
+    const { data: curso } = await supabaseAdmin.from('cursos').select('id, anio, division').eq('id', cursoId).maybeSingle();
+    if (!curso) return res.status(404).json({ ok: false, error: 'El curso no existe.' });
+    const { data: ins } = await supabaseAdmin.from('inscripciones').select('alumno_id').eq('curso_id', cursoId);
+    const ids = (ins || []).map((i) => i.alumno_id);
+    if (!ids.length) return res.json({ ok: true, curso: cursoLabel(curso), boletines: [] });
+
+    const [alumnos, notas, materiasAnio, est] = await Promise.all([
+      traerTodo(() => supabaseAdmin.from('perfiles').select('id, nombre, apellido, documento').in('id', ids).order('apellido').order('nombre')),
+      traerTodo(() => supabaseAdmin.from('calificaciones').select('alumno_id, materia_id, periodo, nota').in('alumno_id', ids).eq('ciclo', ciclo)),
+      traerTodo(() => supabaseAdmin.from('materias').select('id, nombre').eq('anio', curso.anio).order('nombre')),
+      estadoPeriodos(ciclo),
+    ]);
+    const soloPublicados = req.query.soloPublicados === '1';
+    const boletines = alumnos.map((a) => armarBoletin({
+      alumno: a, curso, notas: notas.filter((n) => n.alumno_id === a.id),
+      materiasAnio, materiasConNota: [], estados: est.estados, soloPublicados, ciclo,
+    }));
+    return res.json({ ok: true, curso: cursoLabel(curso), ciclo, boletines });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: 'No pudimos armar los boletines del curso.' });
+  }
 });
 
 module.exports = router;

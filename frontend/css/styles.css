@@ -1105,3 +1105,213 @@ h1 {
   .eje-x { display: none; }
 }
 .form-inline .ayuda-campo { display: block; margin-bottom: 0.9rem; }
+
+/* =========================================================
+   Asistencia: cómputo, niveles y planilla mensual
+   ========================================================= */
+.barra-lista { width: 100%; max-width: 700px; margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.filtros-asistencia a.btn-mini { text-decoration: none; }
+.fila-asistencia .fila-info { gap: 0.15rem; }
+
+.nivel-faltas {
+  display: inline-block; margin-left: 0.3rem; vertical-align: middle;
+  font-size: 0.66rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 0.1rem 0.45rem; border-radius: 999px; border: 1px solid transparent;
+}
+.nivel-normal { background: var(--verde-tenue); color: var(--verde-osc); border-color: var(--verde-claro); }
+.nivel-atencion { background: #fff3d9; color: #9a6a00; border-color: #f0cf8a; }
+.nivel-critico, .nivel-excedido { background: var(--error-bg); color: var(--peligro); border-color: var(--error-borde); }
+:root[data-tema="oscuro"] .nivel-atencion { background: rgba(240,184,64,0.14); color: #f0c060; border-color: rgba(240,184,64,0.35); }
+
+.computo {
+  margin-top: 1.6rem; padding: 1.4rem 1.5rem; text-align: left;
+  border-radius: var(--radio); border: 1px solid var(--borde); background: var(--superficie); box-shadow: var(--sombra);
+}
+.computo-cabecera { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+.computo-total { font-size: 1rem; color: var(--texto-suave); }
+.computo-total strong { font-size: 2.2rem; color: var(--texto); margin-right: 0.2rem; }
+.computo-restan { font-size: 0.95rem; color: var(--texto-suave); }
+.computo-restan strong { color: var(--texto); font-size: 1.2rem; }
+.medidor { margin: 0.8rem 0 0.2rem; height: 12px; border-radius: 999px; background: var(--verde-tenue); overflow: hidden; }
+.medidor span { display: block; height: 100%; border-radius: 999px; background: var(--dato); transition: width 400ms ease; }
+.medidor-atencion { background: #fdf0d2; }
+.medidor-atencion span { background: #c98a00; }
+.medidor-critico, .medidor-excedido { background: var(--error-bg); }
+.medidor-critico span, .medidor-excedido span { background: var(--peligro); }
+.tabla-meses { margin-top: 1.2rem; box-shadow: none; }
+.computo .ayuda-campo { margin-top: 0.8rem; display: block; }
+
+/* Planilla mensual */
+.leyenda-asistencia { margin-top: 1.2rem; display: flex; flex-wrap: wrap; gap: 0.9rem; justify-content: center; font-size: 0.85rem; color: var(--texto-suave); }
+.planilla-mensual-cont { max-width: 1200px; }
+.planilla-mensual { font-size: 0.82rem; }
+.planilla-mensual th.dia, .planilla-mensual td.dia { padding: 0.35rem 0.15rem; min-width: 1.7rem; }
+.planilla-mensual th.dia span { display: block; font-size: 0.62rem; opacity: 0.7; }
+.planilla-mensual .sin-lista { background: var(--superficie-2); }
+.planilla-mensual .col-acumulado { white-space: nowrap; }
+.cod { display: inline-block; min-width: 1.3rem; font-weight: 800; }
+.cod sup { font-size: 0.6rem; }
+.cod-presente { color: var(--texto-suave); font-weight: 600; }
+.cod-tarde { color: #9a6a00; }
+.cod-retirado { color: #b06a00; }
+.cod-ausente { color: var(--peligro); }
+:root[data-tema="oscuro"] .cod-tarde, :root[data-tema="oscuro"] .cod-retirado { color: #f0c060; }
+
+@page apaisada { size: A4 landscape; margin: 10mm; }
+@media print {
+  .planilla-mensual-cont { page: apaisada; }
+  .planilla-mensual { font-size: 9px; }
+  .planilla-mensual .nomina-enlace { color: #000; text-decoration: none; }
+}
+
+/* =========================================================
+   Horarios y Mis materias
+   ========================================================= */
+.horario-layout { margin-top: 1.5rem; width: 100%; }
+.horario-grid.con-lateral { display: grid; grid-template-columns: 1fr 250px; gap: 1rem; align-items: start; }
+.horario { table-layout: fixed; }
+.horario th { font-size: 0.72rem; }
+.horario .hor-hora { width: 72px; font-size: 0.72rem; line-height: 1.25; color: var(--texto-suave); text-align: center; background: var(--superficie-2); }
+.horario .hor-hora span { display: block; font-weight: 800; color: var(--texto); }
+.hor-celda { height: 58px; vertical-align: middle; padding: 0.3rem !important; border-left: 1px solid var(--borde); }
+.hor-celda.ocupada { text-align: left; }
+.hor-materia { display: block; font-weight: 700; font-size: 0.85rem; color: var(--texto); line-height: 1.15; }
+.hor-prof, .hor-aula { display: block; font-size: 0.72rem; color: var(--texto-suave); margin-top: 0.1rem; }
+.hor-sin { color: #9a6a00; font-weight: 600; }
+.hor-recreo td { padding: 0.2rem !important; font-size: 0.7rem; color: var(--texto-suave); background: var(--superficie-2); letter-spacing: 0.03em; }
+.horario tbody tr:hover td { background: inherit; }
+.hor-celda.editable { position: relative; cursor: pointer; }
+.hor-celda.editable:hover, .hor-celda.editable:focus-within { box-shadow: inset 0 0 0 2px var(--verde); }
+.hor-select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 0.9rem; }
+.hor-libre { display: block; text-align: center; font-size: 0.75rem; color: var(--neutro-texto); }
+.hor-celda.editable:hover .hor-libre { color: var(--verde-osc); }
+.historial-cabecera { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+
+/* Tonos suaves por materia (identidad; el nombre siempre está escrito) */
+.tono-0 { background: #eef6e0 !important; } .tono-1 { background: #e3f0fb !important; }
+.tono-2 { background: #fdf0dc !important; } .tono-3 { background: #f3e8fb !important; }
+.tono-4 { background: #e0f5f1 !important; } .tono-5 { background: #fde8ec !important; }
+.tono-6 { background: #f4f1e2 !important; } .tono-7 { background: #e8ecfb !important; }
+:root[data-tema="oscuro"] .tono-0 { background: #22301a !important; } :root[data-tema="oscuro"] .tono-1 { background: #1b2a36 !important; }
+:root[data-tema="oscuro"] .tono-2 { background: #352a1a !important; } :root[data-tema="oscuro"] .tono-3 { background: #2c2236 !important; }
+:root[data-tema="oscuro"] .tono-4 { background: #19302c !important; } :root[data-tema="oscuro"] .tono-5 { background: #36202a !important; }
+:root[data-tema="oscuro"] .tono-6 { background: #2e2b1c !important; } :root[data-tema="oscuro"] .tono-7 { background: #1f2438 !important; }
+
+.hor-carga ul { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.hor-carga li { display: flex; flex-direction: column; padding-bottom: 0.45rem; border-bottom: 1px solid var(--borde); font-size: 0.85rem; }
+.hor-carga li:last-child { border-bottom: none; }
+.hor-cuenta { font-size: 0.78rem; font-weight: 700; color: var(--texto); }
+.hor-carga .ayuda-campo { display: block; margin-top: 0.6rem; }
+.aviso-info a { color: var(--verde-osc); font-weight: 600; }
+.filtros-asistencia > a.btn-mini, #accesos a { text-decoration: none; }
+
+.mm-promedio { margin-top: auto; display: flex; justify-content: space-between; align-items: baseline; padding-top: 0.6rem; border-top: 1px solid var(--borde); }
+.mm-promedio .tile-valor { font-size: 1.4rem; }
+
+@media (max-width: 860px) {
+  .horario-grid.con-lateral { grid-template-columns: 1fr; }
+}
+@media print {
+  .horario-grid.con-lateral { grid-template-columns: 1fr; }
+  .hor-carga { display: none; }
+}
+
+/* =========================================================
+   Cierre de notas y emisión de boletines
+   ========================================================= */
+.estado-periodo {
+  display: block; margin-top: 0.15rem; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.03em;
+  color: var(--texto-suave); text-transform: none;
+}
+.estado-periodo.cerrado { color: var(--peligro); }
+.input-nota:disabled { background: var(--superficie-2); color: var(--texto-suave); cursor: not-allowed; }
+
+.pasos-cierre {
+  margin: 1.4rem 0 0; padding: 1rem 1.2rem 1rem 1.2rem; list-style: none; text-align: left;
+  border-radius: 12px; background: var(--superficie-2); border: 1px solid var(--borde);
+  display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.88rem; color: var(--texto-suave);
+}
+.pasos-cierre strong { color: var(--texto); }
+.periodos-cierre { margin-top: 1.4rem; display: flex; flex-direction: column; gap: 1rem; }
+.periodo-card {
+  padding: 1.3rem 1.4rem; border-radius: var(--radio); text-align: left;
+  border: 1px solid var(--borde); border-left-width: 5px; background: var(--superficie); box-shadow: var(--sombra);
+}
+.periodo-card.es-cerrado { border-left-color: #c98a00; }
+.periodo-card.es-publicado { border-left-color: var(--verde); }
+.periodo-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.estado-paso {
+  display: inline-block; margin-top: 0.3rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 0.15rem 0.55rem; border-radius: 999px; border: 1px solid transparent;
+}
+.estado-paso.abierto { background: var(--neutro-bg); color: var(--texto-suave); border-color: var(--neutro-borde); }
+.estado-paso.vencido, .estado-paso.cerrado { background: #fff3d9; color: #9a6a00; border-color: #f0cf8a; }
+.estado-paso.publicado { background: var(--verde-tenue); color: var(--verde-osc); border-color: var(--verde-claro); }
+:root[data-tema="oscuro"] .estado-paso.vencido, :root[data-tema="oscuro"] .estado-paso.cerrado { background: rgba(240,184,64,0.14); color: #f0c060; border-color: rgba(240,184,64,0.35); }
+.avance { margin-top: 1rem; }
+.avance-texto { font-size: 0.9rem; color: var(--texto-suave); }
+.avance-texto strong { font-size: 1.3rem; color: var(--texto); }
+.incompletas { margin-top: 0.9rem; font-size: 0.88rem; }
+.incompletas summary { cursor: pointer; font-weight: 700; color: #9a6a00; }
+:root[data-tema="oscuro"] .incompletas summary { color: #f0c060; }
+.incompletas ul { list-style: none; margin: 0.6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.incompletas li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.4rem 0.6rem; border-radius: 8px; background: var(--superficie-2); }
+.incompleta-acciones { display: inline-flex; gap: 0.6rem; align-items: center; }
+.incompleta-acciones a { text-decoration: none; }
+.periodo-acciones { margin-top: 1.1rem; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+.periodo-acciones .boton { padding: 0.65rem 1.5rem; font-size: 0.95rem; }
+
+.boletines-lote { margin-top: 1.4rem; display: flex; flex-direction: column; gap: 1.4rem; }
+.firmas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-top: 3rem; font-size: 0.78rem; color: var(--texto-suave); text-align: center; }
+.firmas span { display: block; border-top: 1px solid var(--texto-suave); margin-bottom: 0.3rem; }
+@media print {
+  .boletines-lote { gap: 0; }
+  .hoja-lote { break-after: page; page-break-after: always; }
+  .hoja-lote:last-child { break-after: auto; page-break-after: auto; }
+}
+
+/* =========================================================
+   Actas y citaciones
+   ========================================================= */
+a.fila-acta { display: block; text-decoration: none; color: inherit; transition: border-color var(--transicion), transform var(--transicion); }
+a.fila-acta:hover { border-color: var(--verde); transform: translateY(-1px); }
+.acta-fecha {
+  flex-shrink: 0; width: 4rem; text-align: center; padding: 0.4rem 0.2rem; border-radius: 10px;
+  background: var(--verde-tenue); color: var(--verde-osc); display: flex; flex-direction: column; line-height: 1.15;
+}
+.acta-fecha strong { font-size: 1.05rem; }
+.acta-fecha span { font-size: 0.72rem; }
+.acta-fecha.vencida { background: var(--error-bg); color: var(--peligro); }
+.tipo-acta {
+  display: inline-block; margin-right: 0.3rem; vertical-align: middle;
+  font-size: 0.64rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 0.1rem 0.45rem; border-radius: 999px; border: 1px solid var(--borde); color: var(--texto-suave);
+}
+.tipo-citacion { border-color: #f0cf8a; color: #9a6a00; background: #fff3d9; }
+:root[data-tema="oscuro"] .tipo-citacion { background: rgba(240,184,64,0.14); color: #f0c060; border-color: rgba(240,184,64,0.35); }
+
+.acta-hoja {
+  margin-top: 1rem; padding: 1.8rem; border-radius: var(--radio); text-align: left;
+  border: 1px solid var(--borde); background: var(--superficie); box-shadow: var(--sombra);
+}
+.acta-datos { margin: 0 0 1.2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem 1.5rem; }
+.acta-datos div { display: flex; flex-direction: column; }
+.acta-datos dt { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--texto-suave); }
+.acta-datos dd { margin: 0.1rem 0 0; color: var(--texto); }
+.acta-bloque { margin-top: 0.9rem; }
+.acta-bloque p { margin: 0.2rem 0 0; color: var(--texto); line-height: 1.5; }
+.solo-imprimir { display: none; }
+.acta-hoja .campo textarea { min-height: 4rem; }
+.acta-acciones { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-top: 0.6rem; }
+.acta-acciones .boton { padding: 0.65rem 1.4rem; font-size: 0.95rem; }
+.lista-familias { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.lista-familias li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.4rem 1rem; align-items: center; padding: 0.5rem 0.7rem; border-radius: 8px; background: var(--superficie-2); font-size: 0.9rem; }
+.citacion { text-align: left; }
+.notif-botones { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+.notif-botones .boton { width: auto; padding: 0.6rem 1.3rem; font-size: 0.92rem; }
+@media print {
+  .solo-imprimir { display: block; }
+  .acta-hoja { box-shadow: none; border: none; padding: 0; }
+}
+@media (max-width: 620px) { .acta-datos { grid-template-columns: 1fr; } }
+.fila-asistencia { text-align: left; }

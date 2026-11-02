@@ -33,7 +33,10 @@
 
   <script src="/js/app.js"></script>
   <script>
-    const ESTADOS = { presente: 'Presente', ausente: 'Ausente', retirado: 'Retirado' };
+    const ESTADOS = { presente: 'Presente', tarde: 'Tarde', ausente: 'Ausente', retirado: 'Retirado' };
+    const NIVELES = { normal: 'Dentro de lo esperado', atencion: 'Atención', critico: 'Crítico: cerca del tope', excedido: 'Superó el tope anual' };
+    const fmtN = (n) => (n == null ? '—' : String(n).replace('.', ','));
+    const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
     const params = new URLSearchParams(location.search);
     let alumnoIdParam = params.get('id');
     let permisos = {};
@@ -64,12 +67,12 @@
     }
 
     function filaHistorial(h) {
-      const clase = { presente: 'insignia-activo', ausente: 'insignia-ausente', retirado: 'insignia-retirado' }[h.estado];
+      const clase = { presente: 'insignia-activo', ausente: 'insignia-ausente', retirado: 'insignia-retirado', tarde: 'insignia-retirado' }[h.estado];
       const materia = h.estado === 'retirado' && h.materia ? ` · ${esc(h.materia)}` : '';
       const justif = h.justificada ? '<span class="chip-justif">Justificada</span>' : '';
       const obs = h.observacion ? `<span class="codigo-meta">${esc(h.observacion)}</span>` : '';
       let accion = '';
-      if (permisos.justificar && (h.estado === 'ausente' || h.estado === 'retirado')) {
+      if (permisos.justificar && h.estado !== 'presente') {
         accion = h.justificada
           ? `<button class="btn-mini" data-just="${h.id}" data-val="0">Quitar justif.</button>`
           : `<button class="btn-mini" data-just="${h.id}" data-val="1">Justificar</button>`;
@@ -93,17 +96,43 @@
       document.getElementById('subtitulo').textContent =
         `${a.curso ? a.curso + ' · ' : ''}DNI ${esc(a.documento || '—')}`;
 
-      const ausentes = data.historial.filter((h) => h.estado === 'ausente');
-      const justificadas = ausentes.filter((h) => h.justificada).length;
-      const retiros = data.historial.filter((h) => h.estado === 'retirado').length;
-
+      const c = data.computo;
+      const v = data.valores || {};
+      const pctTope = Math.min(100, (c.faltas / c.limite) * 100);
       const cont = document.getElementById('contenido');
       cont.innerHTML = `
-        <div class="contadores">
-          <div class="contador"><span class="num">${ausentes.length}</span><span class="cap">Ausencias</span></div>
-          <div class="contador"><span class="num">${justificadas}</span><span class="cap">Justificadas</span></div>
-          <div class="contador"><span class="num">${retiros}</span><span class="cap">Retiros</span></div>
-        </div>
+        <section class="computo lista-ancha">
+          <div class="computo-cabecera">
+            <div>
+              <span class="sub-titulo">Inasistencias · ciclo ${data.ciclo}</span>
+              <div class="computo-total"><strong>${fmtN(c.faltas)}</strong> de ${c.limite}
+                <span class="nivel-faltas nivel-${c.nivel}">${NIVELES[c.nivel]}</span></div>
+            </div>
+            <div class="computo-restan">${c.faltas >= c.limite ? 'Sin margen' : `Quedan <strong>${fmtN(c.restan)}</strong>`}</div>
+          </div>
+          <div class="medidor medidor-${c.nivel}" role="meter" aria-valuemin="0" aria-valuemax="${c.limite}" aria-valuenow="${c.faltas}"
+               aria-label="${fmtN(c.faltas)} inasistencias de ${c.limite}">
+            <span style="width:${pctTope}%"></span>
+          </div>
+          <div class="tiles tiles-chicos">
+            <div class="tile"><span class="tile-label">Ausencias</span><span class="tile-valor">${c.ausencias}</span></div>
+            <div class="tile"><span class="tile-label">Llegadas tarde</span><span class="tile-valor">${c.tardes}</span></div>
+            <div class="tile"><span class="tile-label">Retiros</span><span class="tile-valor">${c.retiros}</span></div>
+            <div class="tile"><span class="tile-label">Justificadas</span><span class="tile-valor">${fmtN(c.justificadas)}</span></div>
+            <div class="tile"><span class="tile-label">Presentismo</span><span class="tile-valor">${c.presentismo == null ? '—' : fmtN(c.presentismo) + ' %'}</span></div>
+          </div>
+          ${data.porMes.length ? `
+            <table class="planilla tabla-meses">
+              <thead><tr><th class="col-alumno">Mes</th><th>Días</th><th>Ausencias</th><th>Tardes</th><th>Retiros</th><th>Faltas</th></tr></thead>
+              <tbody>
+                ${data.porMes.map((m) => `<tr>
+                  <td class="col-alumno">${MESES[Number(m.mes.slice(5)) - 1]}</td>
+                  <td>${m.dias}</td><td>${m.ausencias}</td><td>${m.tardes}</td><td>${m.retiros}</td>
+                  <td><strong>${fmtN(m.faltas)}</strong></td></tr>`).join('')}
+              </tbody>
+            </table>` : ''}
+          <p class="ayuda-campo">Cómputo: ausente = ${fmtN(v.ausente ?? 1)} · retiro = ${fmtN(v.retirado ?? 0.5)} · llegada tarde = ${fmtN(v.tarde ?? 0.25)}. Las faltas justificadas también suman al tope anual.</p>
+        </section>
 
         ${permisos.avisar ? `
         <form class="tarjeta-form" id="form-aviso" style="max-width:640px;">
@@ -121,15 +150,24 @@
             ${data.avisos.map((v) => `
               <div class="comunicado" style="width:100%;">
                 <p class="com-cuerpo">${esc(v.mensaje)}</p>
-                <div class="com-foot"><span class="com-autor">${esc(v.emitido_nombre || '')} · ${esc(v.emitido_rol || '')} · ${fechaHora(v.creado_en)}</span></div>
+                <div class="com-foot"><span class="com-autor">${v.automatico ? 'Aviso automático del sistema' : `${esc(v.emitido_nombre || '')} · ${esc(v.emitido_rol || '')}`} · ${fechaHora(v.creado_en)}</span></div>
               </div>`).join('')}
           </div>` : ''}
 
-        <h2 class="titulo-lista" style="max-width:640px; width:100%;">Historial</h2>
+        <div class="historial-cabecera" style="max-width:640px; width:100%;">
+          <h2 class="titulo-lista">Historial</h2>
+          <label class="filtro-etiqueta"><input type="checkbox" id="ver-todos" ${verTodos ? 'checked' : ''} /> Mostrar también los días presentes</label>
+        </div>
         <div class="lista-usuarios" id="historial" style="max-width:640px;">
-          ${data.historial.length ? data.historial.map(filaHistorial).join('') : '<p class="cargando">Sin registros de asistencia todavía.</p>'}
+          ${(() => {
+            const lista = verTodos ? data.historial : data.historial.filter((h) => h.estado !== 'presente');
+            if (!data.historial.length) return '<p class="cargando">Sin registros de asistencia todavía.</p>';
+            if (!lista.length) return '<p class="cargando">Sin inasistencias, llegadas tarde ni retiros. ¡Muy bien!</p>';
+            return lista.map(filaHistorial).join('');
+          })()}
         </div>`;
 
+      document.getElementById('ver-todos').addEventListener('change', (e) => { verTodos = e.target.checked; render(data); });
       // Justificar / quitar justificación (preceptor)
       cont.querySelectorAll('[data-just]').forEach((b) =>
         b.addEventListener('click', () => justificar(b.dataset.just, b.dataset.val === '1')));
@@ -169,6 +207,7 @@
     }
 
     let alumnoIdReal = null;
+    let verTodos = false;
     async function cargar() {
       try {
         const data = await api('GET', `/api/asistencia/alumno/${alumnoIdParam}`);

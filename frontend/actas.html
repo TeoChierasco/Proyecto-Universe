@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Actas y citaciones</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1>Actas y <span class="destello">citaciones</span></h1>
+          <p class="subtitulo" id="subtitulo">Citaciones a familias y actas de reunión</p>
+        </div>
+
+        <button class="boton boton-primario" id="btn-nueva" type="button" hidden style="margin-top:1.4rem;">+ Nueva citación o reunión</button>
+
+        <!-- Alta -->
+        <form class="tarjeta-form" id="form-nueva" hidden>
+          <h2 class="titulo-tarjeta">Nueva citación o reunión</h2>
+          <div class="fila-doble">
+            <div class="campo">
+              <label for="tipo">Tipo</label>
+              <select id="tipo">
+                <option value="citacion">Citación a la familia</option>
+                <option value="reunion">Reunión (acta)</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="curso-f">Curso</label>
+              <select id="curso-f"></select>
+            </div>
+          </div>
+          <div class="campo">
+            <label for="alumno">Alumno/a <span class="codigo-meta" id="alumno-opcional">(obligatorio en citaciones)</span></label>
+            <select id="alumno"></select>
+          </div>
+          <div class="fila-doble">
+            <div class="campo">
+              <label for="fecha">Fecha</label>
+              <input type="date" id="fecha" required />
+            </div>
+            <div class="campo">
+              <label for="hora">Hora</label>
+              <input type="time" id="hora" />
+            </div>
+          </div>
+          <div class="campo">
+            <label for="lugar">Lugar</label>
+            <input type="text" id="lugar" maxlength="120" placeholder="Ej: Secretaría, Dirección, Sala de reuniones" />
+          </div>
+          <div class="campo">
+            <label for="asunto">Motivo / asunto</label>
+            <input type="text" id="asunto" maxlength="300" required placeholder="Ej: Rendimiento en Matemáticas e inasistencias" />
+          </div>
+          <div class="campo">
+            <label for="convocados">Convocados</label>
+            <input type="text" id="convocados" maxlength="1000" placeholder="Ej: Madre/padre, preceptora, docente de Matemáticas" />
+          </div>
+          <div class="mensaje-form" id="mensaje" role="alert"></div>
+          <button type="submit" class="boton boton-primario" id="btn-crear">Guardar</button>
+        </form>
+
+        <div class="pestanias" id="pestanias" hidden>
+          <button class="pestania activa" data-vista="proximas">Programadas <span class="pestania-num" id="n-proximas">0</span></button>
+          <button class="pestania" data-vista="realizadas">Realizadas <span class="pestania-num" id="n-realizadas">0</span></button>
+          <button class="pestania" data-vista="canceladas">Canceladas <span class="pestania-num" id="n-canceladas">0</span></button>
+        </div>
+        <div class="barra-busqueda" id="barra" hidden>
+          <input type="text" class="input-mini" id="buscar" placeholder="Buscar por alumno, curso o asunto…" />
+        </div>
+
+        <div class="lista-usuarios lista-ancha" id="lista">
+          <p class="cargando">Cargando actas…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let estado = { actas: [], opciones: { cursos: [], alumnos: [] }, vista: 'proximas' };
+    const VISTA_ESTADO = { proximas: 'programada', realizadas: 'realizada', canceladas: 'cancelada' };
+    const TIPO = { citacion: 'Citación', reunion: 'Reunión' };
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    function fechaLarga(iso) {
+      return new Date(iso + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    async function api(metodo, ruta, body) {
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${App.obtenerToken()}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function renderLista() {
+      const filtro = (document.getElementById('buscar').value || '').toLowerCase().trim();
+      ['proximas', 'realizadas', 'canceladas'].forEach((v) => {
+        document.getElementById(`n-${v}`).textContent = estado.actas.filter((a) => a.estado === VISTA_ESTADO[v]).length;
+      });
+      document.querySelectorAll('[data-vista]').forEach((b) => b.classList.toggle('activa', b.dataset.vista === estado.vista));
+
+      let lista = estado.actas.filter((a) => a.estado === VISTA_ESTADO[estado.vista]);
+      // Programadas: la más próxima primero.
+      if (estado.vista === 'proximas') lista = lista.slice().sort((x, y) => (x.fecha + (x.hora || '')).localeCompare(y.fecha + (y.hora || '')));
+      if (filtro) {
+        lista = lista.filter((a) => [a.asunto, a.curso, a.alumno && a.alumno.nombre, a.alumno && a.alumno.apellido, a.creadoNombre]
+          .join(' ').toLowerCase().includes(filtro));
+      }
+      const cont = document.getElementById('lista');
+      if (!lista.length) {
+        cont.innerHTML = `<p class="cargando">${filtro ? 'Nada coincide con la búsqueda.' : 'No hay actas en esta sección.'}</p>`;
+        return;
+      }
+      const hoy = new Date().toISOString().slice(0, 10);
+      cont.innerHTML = lista.map((a) => `
+        <a class="fila-legajo fila-acta" href="/acta.html?id=${a.id}">
+          <div class="fila-legajo-cabecera">
+            <div class="acta-fecha ${a.estado === 'programada' && a.fecha < hoy ? 'vencida' : ''}">
+              <strong>${a.fecha.slice(8)}/${a.fecha.slice(5, 7)}</strong>
+              <span>${a.hora || ''}</span>
+            </div>
+            <div class="fila-info" style="flex:1">
+              <span class="usuario-nombre-lista"><span class="tipo-acta tipo-${a.tipo}">${TIPO[a.tipo]}</span> ${esc(a.asunto)}</span>
+              <span class="codigo-meta">
+                ${a.alumno ? `${esc(a.alumno.apellido)}, ${esc(a.alumno.nombre)} · ` : ''}${a.curso ? esc(a.curso) + ' · ' : ''}${a.lugar ? esc(a.lugar) + ' · ' : ''}${fechaLarga(a.fecha)}
+              </span>
+              <span class="codigo-meta">Convoca: ${esc(a.creadoNombre || '—')}</span>
+            </div>
+            <div class="fila-acciones">
+              ${a.tipo === 'citacion' ? (a.notificaciones
+                ? `<span class="nivel-faltas ${a.noPueden ? 'nivel-atencion' : 'nivel-normal'}">${a.noPueden ? 'Avisó que no puede' : 'Familia notificada'}</span>`
+                : '<span class="nivel-faltas nivel-atencion">Sin notificar</span>') : ''}
+              ${a.estado === 'programada' && a.fecha < hoy ? '<span class="nivel-faltas nivel-critico">Completar acta</span>' : ''}
+            </div>
+          </div>
+        </a>`).join('');
+    }
+
+    function opcionesAlumnos() {
+      const curso = document.getElementById('curso-f').value;
+      const lista = estado.opciones.alumnos.filter((a) => !curso || String(a.cursoId) === curso);
+      document.getElementById('alumno').innerHTML = '<option value="">— Sin alumno —</option>' +
+        lista.map((a) => `<option value="${a.id}">${esc(a.nombre)}</option>`).join('');
+    }
+
+    async function cargar() {
+      try {
+        const data = await api('GET', '/api/actas');
+        estado.actas = data.actas;
+        document.getElementById('pestanias').hidden = false;
+        document.getElementById('barra').hidden = false;
+        document.getElementById('btn-nueva').hidden = false;
+        renderLista();
+      } catch (error) {
+        document.getElementById('lista').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    document.getElementById('btn-nueva').addEventListener('click', async () => {
+      const form = document.getElementById('form-nueva');
+      form.hidden = !form.hidden;
+      if (!form.hidden && !estado.opciones.cursos.length) {
+        try {
+          estado.opciones = await api('GET', '/api/actas/opciones');
+          document.getElementById('curso-f').innerHTML = '<option value="">Todos los cursos</option>' +
+            estado.opciones.cursos.map((c) => `<option value="${c.id}">${esc(c.label)}</option>`).join('');
+          opcionesAlumnos();
+        } catch (e) { App.toast(e.message); }
+      }
+      document.getElementById('fecha').value = document.getElementById('fecha').value || new Date().toISOString().slice(0, 10);
+    });
+    document.getElementById('curso-f').addEventListener('change', opcionesAlumnos);
+    document.getElementById('tipo').addEventListener('change', (e) => {
+      document.getElementById('alumno-opcional').textContent = e.target.value === 'citacion' ? '(obligatorio en citaciones)' : '(opcional)';
+    });
+
+    document.getElementById('form-nueva').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const mensaje = document.getElementById('mensaje');
+      App.ocultarMensaje(mensaje);
+      const body = {
+        tipo: document.getElementById('tipo').value,
+        cursoId: document.getElementById('curso-f').value || null,
+        alumnoId: document.getElementById('alumno').value || null,
+        fecha: document.getElementById('fecha').value,
+        hora: document.getElementById('hora').value,
+        lugar: document.getElementById('lugar').value,
+        asunto: document.getElementById('asunto').value,
+        convocados: document.getElementById('convocados').value,
+      };
+      try {
+        const r = await api('POST', '/api/actas', body);
+        App.toast(r.message);
+        location.href = `/acta.html?id=${r.id}`;
+      } catch (error) {
+        App.mostrarMensaje(mensaje, error.message, 'error');
+      }
+    });
+
+    document.querySelectorAll('[data-vista]').forEach((b) => b.addEventListener('click', () => { estado.vista = b.dataset.vista; renderLista(); }));
+    document.getElementById('buscar').addEventListener('input', renderLista);
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (!['secretaria', 'director', 'preceptor', 'profesor'].includes(usuario.rol)) {
+        document.getElementById('lista').innerHTML = '<p class="cargando">Las familias ven sus citaciones en <a href="/citaciones.html">Citaciones</a>.</p>';
+        return;
+      }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

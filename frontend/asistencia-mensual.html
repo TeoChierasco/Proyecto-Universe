@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Planilla mensual de asistencia</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior no-imprimir">
+      <a href="/asistencia.html" class="enlace-volver">← Volver a asistencia</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1>Planilla <span class="destello">mensual</span></h1>
+          <p class="subtitulo" id="subtitulo">Registro de asistencia por curso</p>
+        </div>
+
+        <div class="filtros-asistencia no-imprimir" id="filtros" hidden>
+          <select class="input-mini" id="curso"></select>
+          <input type="month" class="input-mini" id="mes" />
+          <button class="boton boton-primario" id="btn-imprimir" type="button">Imprimir / PDF</button>
+        </div>
+
+        <div class="leyenda-asistencia" id="leyenda" hidden>
+          <span><b class="cod cod-presente">P</b> Presente</span>
+          <span><b class="cod cod-tarde">T</b> Tarde</span>
+          <span><b class="cod cod-retirado">R</b> Retiro</span>
+          <span><b class="cod cod-ausente">A</b> Ausente</span>
+          <span><b class="cod cod-ausente">A<sup>j</sup></b> Justificada</span>
+          <span class="codigo-meta" id="leyenda-computo"></span>
+        </div>
+
+        <div class="planilla-contenedor planilla-mensual-cont" id="contenido">
+          <p class="cargando">Elegí un curso.</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie no-imprimir">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const COD = { presente: 'P', tarde: 'T', retirado: 'R', ausente: 'A' };
+    const NIVELES = { atencion: 'Atención', critico: 'Crítico', excedido: 'Tope' };
+    const fmtN = (n) => String(n).replace('.', ',');
+    const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    async function api(ruta) {
+      const r = await fetch(ruta, { headers: { Authorization: `Bearer ${App.obtenerToken()}` } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function render(d) {
+      const [y, m] = d.mes.split('-');
+      document.getElementById('subtitulo').textContent = `${d.curso.label} · ${MESES[Number(m) - 1]} ${y} · ${d.diasConLista.length} día(s) con lista`;
+      const v = d.valores;
+      document.getElementById('leyenda-computo').textContent =
+        `Faltas: A = ${fmtN(v.ausente)} · R = ${fmtN(v.retirado)} · T = ${fmtN(v.tarde)} · tope anual ${d.limite}`;
+      document.getElementById('leyenda').hidden = false;
+
+      const cont = document.getElementById('contenido');
+      if (!d.alumnos.length) {
+        cont.innerHTML = '<p class="cargando">Este curso no tiene alumnos inscriptos.</p>';
+        return;
+      }
+      const conLista = new Set(d.diasConLista);
+      const diaSemana = (f) => ['D', 'L', 'M', 'M', 'J', 'V', 'S'][new Date(f + 'T12:00:00').getDay()];
+
+      cont.innerHTML = `
+        <table class="planilla planilla-mensual">
+          <thead>
+            <tr>
+              <th class="col-alumno">Alumno/a</th>
+              ${d.dias.map((f) => `<th class="dia ${conLista.has(f) ? '' : 'sin-lista'}"><span>${diaSemana(f)}</span>${Number(f.slice(8))}</th>`).join('')}
+              <th title="Faltas computadas en el mes">Mes</th>
+              <th title="Faltas computadas en el año, hasta fin de este mes">Año</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${d.alumnos.map((a, i) => `
+              <tr>
+                <td class="col-alumno"><span class="planilla-num">${i + 1}</span><a class="nomina-enlace" href="/asistencia-alumno.html?id=${a.id}">${esc(a.apellido)}, ${esc(a.nombre)}</a></td>
+                ${d.dias.map((f) => {
+                  const r = a.dias[f];
+                  if (!r) return `<td class="dia ${conLista.has(f) ? '' : 'sin-lista'}"></td>`;
+                  return `<td class="dia"><b class="cod cod-${r.estado}">${COD[r.estado] || '?'}${r.justificada ? '<sup>j</sup>' : ''}</b></td>`;
+                }).join('')}
+                <td><strong>${fmtN(a.mes.faltas)}</strong></td>
+                <td class="col-acumulado">${fmtN(a.acumulado.faltas)}${NIVELES[a.acumulado.nivel] ? ` <span class="nivel-faltas nivel-${a.acumulado.nivel}">${NIVELES[a.acumulado.nivel]}</span>` : ''}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    async function cargar() {
+      const cursoId = document.getElementById('curso').value;
+      const mes = document.getElementById('mes').value;
+      if (!cursoId || !mes) return;
+      history.replaceState(null, '', `?curso=${cursoId}&mes=${mes}`);
+      document.getElementById('contenido').innerHTML = '<p class="cargando">Armando la planilla…</p>';
+      try {
+        render(await api(`/api/asistencia/planilla?cursoId=${cursoId}&mes=${mes}`));
+      } catch (error) {
+        document.getElementById('contenido').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    document.getElementById('curso').addEventListener('change', cargar);
+    document.getElementById('mes').addEventListener('change', cargar);
+    document.getElementById('btn-imprimir').addEventListener('click', () => window.print());
+    let temaPrevio = null;
+    window.addEventListener('beforeprint', () => { temaPrevio = document.documentElement.dataset.tema; document.documentElement.dataset.tema = 'claro'; });
+    window.addEventListener('afterprint', () => { if (temaPrevio) document.documentElement.dataset.tema = temaPrevio; });
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (!['preceptor', 'secretaria', 'director'].includes(usuario.rol)) {
+        document.getElementById('contenido').innerHTML = '<p class="cargando">Tu rol no gestiona la asistencia.</p>';
+        return;
+      }
+      try {
+        const est = await api('/api/academico/estructura');
+        document.getElementById('curso').innerHTML = '<option value="">Elegí un curso…</option>' +
+          (est.cursos || []).map((c) => `<option value="${c.id}">${c.anio}.º ${c.division}</option>`).join('');
+        document.getElementById('curso').value = params.get('curso') || '';
+        document.getElementById('mes').value = params.get('mes') || new Date().toISOString().slice(0, 7);
+        document.getElementById('filtros').hidden = false;
+        await cargar();
+      } catch (e) {
+        document.getElementById('contenido').innerHTML = '<p class="cargando">No pudimos cargar los cursos.</p>';
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -76,7 +76,8 @@
             ${periodos.map((p) => {
               const n = a.cargadas[p.id] || 0;
               const clase = a.alumnos && n >= a.alumnos ? 'completo' : n ? 'parcial' : '';
-              return `<span class="td-periodo ${clase}" title="${esc(p.nombre)}: ${n} de ${a.alumnos} notas cargadas">${esc(p.corto)} <strong>${n}/${a.alumnos}</strong></span>`;
+              const candado = p.bloqueado ? ' · cerrado' : p.fechaLimite ? ` · hasta ${p.fechaLimite.slice(8)}/${p.fechaLimite.slice(5, 7)}` : '';
+              return `<span class="td-periodo ${clase}" title="${esc(p.nombre)}: ${n} de ${a.alumnos} notas cargadas">${esc(p.corto)} <strong>${n}/${a.alumnos}</strong>${candado}</span>`;
             }).join('')}
           </div>
           <a class="boton boton-primario td-boton" href="/notas.html?asignacion=${a.id}">Cargar notas</a>

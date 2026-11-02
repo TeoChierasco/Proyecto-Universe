@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Horarios</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior no-imprimir">
+      <a href="/panel.html" class="enlace-volver" id="volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1 id="titulo"><span class="destello">Horarios</span></h1>
+          <p class="subtitulo" id="subtitulo"></p>
+        </div>
+
+        <div class="filtros-asistencia no-imprimir" id="filtros" hidden>
+          <select class="input-mini" id="curso"></select>
+          <button class="btn-mini" id="btn-imprimir" type="button">Imprimir</button>
+        </div>
+
+        <p class="aviso-info no-imprimir" id="ayuda-editor" hidden>
+          Tocá un módulo para asignarle una materia (o dejarlo libre). El profesor sale de las asignaciones de
+          <a href="/profesores.html">Profesores</a>. Si el profesor ya tiene clase en otro curso a esa hora, el sistema avisa.
+        </p>
+
+        <div class="horario-layout lista-ancha" id="contenido">
+          <p class="cargando">Cargando horario…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie no-imprimir">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    let datos = null;
+    let modo = 'ver'; // 'ver' | 'editar' | 'profesor'
+
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    async function api(metodo, ruta, body) {
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${App.obtenerToken()}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    // Color estable por materia (mismo nombre → mismo tono), en una paleta suave.
+    const TONOS = 8;
+    function tonoDe(nombre) {
+      let h = 0;
+      for (const ch of String(nombre)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      return h % TONOS;
+    }
+
+    function celda(dia, modulo) {
+      const c = datos.clases.find((x) => x.dia === dia && x.modulo === modulo);
+      if (modo === 'editar') {
+        const opciones = ['<option value="">— Libre —</option>']
+          .concat(datos.carga.map((m) => `<option value="${m.materiaId}" ${c && c.materiaId === m.materiaId ? 'selected' : ''}>${esc(m.materia)}</option>`))
+          .join('');
+        // El select cubre toda la celda (invisible): se ve el nombre completo y al tocar se elige.
+        return `<td class="hor-celda editable ${c ? 'ocupada tono-' + tonoDe(c.materia) : 'libre'}">
+          ${c ? `<span class="hor-materia">${esc(c.materia)}</span>` : '<span class="hor-libre">+ Asignar</span>'}
+          ${c && c.profesor ? `<span class="hor-prof">${esc(c.profesor)}</span>` : c ? '<span class="hor-prof hor-sin">Sin docente</span>' : ''}
+          <select class="hor-select" data-dia="${dia}" data-modulo="${modulo}" aria-label="Materia del ${datos.dias.find((d) => d.id === dia).nombre}, módulo ${modulo}">${opciones}</select>
+        </td>`;
+      }
+      if (!c) return '<td class="hor-celda libre"></td>';
+      const sub = modo === 'profesor' ? c.curso : c.profesor;
+      return `<td class="hor-celda ocupada tono-${tonoDe(c.materia)}">
+        <span class="hor-materia">${esc(c.materia)}</span>
+        ${sub ? `<span class="hor-prof">${esc(sub)}</span>` : ''}
+        ${c.aula ? `<span class="hor-aula">Aula ${esc(c.aula)}</span>` : ''}
+      </td>`;
+    }
+
+    function render() {
+      const { dias, modulos, recreos } = datos;
+      const filas = modulos.map((m) => {
+        const fila = `<tr>
+          <th class="hor-hora"><span>${m.id}.º</span>${m.inicio}<br />${m.fin}</th>
+          ${dias.map((d) => celda(d.id, m.id)).join('')}
+        </tr>`;
+        const recreo = recreos.find((r) => r.despuesDe === m.id);
+        return recreo ? fila + `<tr class="hor-recreo"><td colspan="${dias.length + 1}">${esc(recreo.texto)}</td></tr>` : fila;
+      }).join('');
+
+      const grilla = `
+        <div class="planilla-contenedor">
+          <table class="planilla horario">
+            <thead><tr><th class="hor-hora">Hora</th>${dias.map((d) => `<th>${esc(d.nombre)}</th>`).join('')}</tr></thead>
+            <tbody>${filas}</tbody>
+          </table>
+        </div>`;
+
+      const lateral = modo === 'editar' ? `
+        <aside class="anio-bloque hor-carga">
+          <span class="sub-titulo">Carga semanal</span>
+          <ul>
+            ${datos.carga.map((m) => {
+              const ok = m.horasAsignadas == null || m.horasAsignadas === m.modulos;
+              return `<li class="${ok ? '' : 'desfasada'}">
+                <span class="md-materia">${esc(m.materia)}</span>
+                <span class="codigo-meta">${m.profesor ? esc(m.profesor) : 'Sin docente'}</span>
+                <span class="hor-cuenta">${m.modulos}${m.horasAsignadas != null ? ` / ${m.horasAsignadas}` : ''} mód.
+                  ${ok ? '' : '<span class="nivel-faltas nivel-atencion">Revisar</span>'}</span>
+              </li>`;
+            }).join('')}
+          </ul>
+          <p class="ayuda-campo">"x / y" = módulos en la grilla / horas semanales de la asignación docente.</p>
+        </aside>` : '';
+
+      document.getElementById('contenido').innerHTML = `<div class="horario-grid ${modo === 'editar' ? 'con-lateral' : ''}">${grilla}${lateral}</div>`;
+
+      document.querySelectorAll('.hor-select').forEach((sel) => sel.addEventListener('change', () => guardarCelda(sel)));
+    }
+
+    async function guardarCelda(sel) {
+      const body = { dia: Number(sel.dataset.dia), modulo: Number(sel.dataset.modulo), materiaId: sel.value ? Number(sel.value) : null };
+      sel.disabled = true;
+      try {
+        const r = await api('PUT', `/api/horarios/curso/${datos.curso.id}`, body);
+        App.toast(r.message);
+      } catch (error) {
+        App.toast(error.message);
+      }
+      await cargarCurso(datos.curso.id);
+    }
+
+    async function cargarCurso(id) {
+      if (!id) return;
+      history.replaceState(null, '', `?curso=${id}`);
+      try {
+        datos = await api('GET', `/api/horarios/curso/${id}`);
+        modo = datos.puedeEditar ? 'editar' : 'ver';
+        document.getElementById('ayuda-editor').hidden = modo !== 'editar';
+        document.getElementById('titulo').innerHTML = `Horario · <span class="destello">${esc(datos.curso.label)}</span>`;
+        document.getElementById('subtitulo').textContent = `${datos.clases.length} módulo(s) por semana`;
+        render();
+      } catch (error) {
+        document.getElementById('contenido').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    async function cargarPropio(ruta, modoVista) {
+      try {
+        datos = await api('GET', ruta);
+        modo = modoVista;
+        document.getElementById('titulo').innerHTML = modoVista === 'profesor' ? 'Mi <span class="destello">horario</span>' : `<span class="destello">Horario</span>`;
+        document.getElementById('subtitulo').textContent = datos.titulo || '';
+        if (!datos.clases.length && !datos.curso && modoVista !== 'profesor') {
+          document.getElementById('contenido').innerHTML = '<p class="cargando">Todavía no tenés curso asignado.</p>';
+          return;
+        }
+        render();
+      } catch (error) {
+        document.getElementById('contenido').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    document.getElementById('btn-imprimir').addEventListener('click', () => window.print());
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      const rol = usuario.rol;
+
+      if (rol === 'alumno') return cargarPropio('/api/horarios/mio', 'ver');
+      if (rol === 'profesor' && !params.get('curso')) return cargarPropio('/api/horarios/mio', 'profesor');
+      if (rol === 'padre') {
+        const v = document.getElementById('volver'); v.href = '/hijos.html'; v.textContent = '← Volver a mis hijos/as';
+        if (!params.get('alumno')) {
+          document.getElementById('contenido').innerHTML = '<p class="cargando">Elegí un hijo/a desde <a href="/hijos.html">Mis hijos/as</a>.</p>';
+          return;
+        }
+        return cargarPropio(`/api/horarios/alumno/${encodeURIComponent(params.get('alumno'))}`, 'ver');
+      }
+
+      // Personal: selector de curso.
+      try {
+        const est = await api('GET', '/api/academico/estructura');
+        const sel = document.getElementById('curso');
+        sel.innerHTML = '<option value="">Elegí un curso…</option>' +
+          (est.cursos || []).map((c) => `<option value="${c.id}">${c.anio}.º ${c.division}</option>`).join('');
+        sel.addEventListener('change', () => cargarCurso(sel.value));
+        document.getElementById('filtros').hidden = false;
+        const inicial = params.get('curso') || ((est.cursos || [])[0] || {}).id;
+        if (inicial) { sel.value = inicial; await cargarCurso(inicial); }
+        else document.getElementById('contenido').innerHTML = '<p class="cargando">No hay cursos cargados.</p>';
+      } catch (e) {
+        document.getElementById('contenido').innerHTML = '<p class="cargando">No pudimos cargar los cursos.</p>';
+      }
+    })();
+  </script>
+</body>
+</html>

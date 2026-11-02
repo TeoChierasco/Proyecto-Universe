@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instituto Universe — Citaciones</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/isotipo.svg" />
+  <script>document.documentElement.dataset.tema = localStorage.getItem('iu_tema') || 'claro';</script>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="contenido">
+    <header class="barra-superior">
+      <a href="/panel.html" class="enlace-volver">← Volver al panel</a>
+      <div id="zona-usuario"></div>
+    </header>
+
+    <main class="main-top">
+      <div class="aparecer" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <div class="panel-cabecera">
+          <h1><span class="destello">Citaciones</span></h1>
+          <p class="subtitulo">Reuniones a las que te convoca el instituto por tus hijos/as</p>
+        </div>
+
+        <div class="lista-usuarios lista-ancha" id="lista">
+          <p class="cargando">Cargando…</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="pie">© 2026 Instituto Universe</footer>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    function esc(t) {
+      return String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+    const multilinea = (t) => esc(t || '').replace(/\n/g, '<br />');
+    function fechaLarga(iso) {
+      return new Date(iso + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+    async function api(metodo, ruta, body) {
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${App.obtenerToken()}` },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    function render(actas) {
+      const cont = document.getElementById('lista');
+      if (!actas.length) {
+        cont.innerHTML = '<p class="cargando">No tenés citaciones. Si todavía no vinculaste a tus hijos/as, hacelo desde <a href="/hijos.html">Mis hijos/as</a>.</p>';
+        return;
+      }
+      const hoy = new Date().toISOString().slice(0, 10);
+      cont.innerHTML = actas.map((a) => {
+        const pendiente = a.estado === 'programada' && a.fecha >= hoy;
+        const n = a.notificacion;
+        return `
+        <div class="fila-legajo citacion ${pendiente && !n ? 'abierta' : ''}">
+          <div class="fila-legajo-cabecera">
+            <div class="acta-fecha"><strong>${a.fecha.slice(8)}/${a.fecha.slice(5, 7)}</strong><span>${esc(a.hora || '')}</span></div>
+            <div class="fila-info" style="flex:1">
+              <span class="usuario-nombre-lista">${esc(a.asunto)}</span>
+              <span class="codigo-meta">${a.alumno ? `${esc(a.alumno.nombre)} ${esc(a.alumno.apellido)}` : ''}${a.curso ? ' · ' + esc(a.curso) : ''}</span>
+              <span class="codigo-meta">${fechaLarga(a.fecha)}${a.hora ? ` a las ${esc(a.hora)} h` : ''}${a.lugar ? ` · ${esc(a.lugar)}` : ''} · Convoca: ${esc(a.convoca || 'el instituto')}</span>
+            </div>
+            <span class="estado-paso ${a.estado === 'realizada' ? 'publicado' : 'abierto'}">${a.estado === 'realizada' ? 'Realizada' : 'Programada'}</span>
+          </div>
+          ${a.estado === 'realizada' && a.acuerdos ? `<div class="acta-bloque"><span class="sub-titulo">Acuerdos</span><p>${multilinea(a.acuerdos)}</p></div>` : ''}
+          ${a.estado === 'programada' ? (n
+            ? `<p class="ayuda-campo">✓ Te notificaste${n.respuesta === 'asistire' ? ' y confirmaste que vas a asistir' : n.respuesta === 'no_puedo' ? ' y avisaste que no podés asistir' : ''}.</p>`
+            : `<form class="form-inline form-notif" data-id="${a.id}">
+                <div class="campo"><label>Comentario (opcional)</label><input type="text" name="comentario" maxlength="300" placeholder="Ej: Puedo ir más tarde, a las 10 h" /></div>
+                <div class="notif-botones">
+                  <button type="submit" class="boton boton-primario" data-respuesta="asistire">Me notifiqué · Voy a asistir</button>
+                  <button type="submit" class="btn-mini" data-respuesta="no_puedo">No puedo asistir</button>
+                </div>
+              </form>`) : ''}
+        </div>`;
+      }).join('');
+
+      cont.querySelectorAll('.form-notif').forEach((f) => {
+        let respuesta = 'asistire';
+        f.querySelectorAll('[data-respuesta]').forEach((b) => b.addEventListener('click', () => { respuesta = b.dataset.respuesta; }));
+        f.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          try {
+            const r = await api('POST', `/api/actas/${f.dataset.id}/notificacion`, { respuesta, comentario: f.comentario.value });
+            App.toast(r.message);
+            await cargar();
+          } catch (error) { App.toast(error.message); }
+        });
+      });
+    }
+
+    async function cargar() {
+      try {
+        render((await api('GET', '/api/actas/familia')).actas);
+      } catch (error) {
+        document.getElementById('lista').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;
+      }
+    }
+
+    (async () => {
+      const usuario = await App.exigirSesion();
+      if (!usuario) return;
+      App.montarBarraUsuario(usuario);
+      if (usuario.rol !== 'padre') {
+        document.getElementById('lista').innerHTML = '<p class="cargando">Esta sección es para familias. El personal gestiona las citaciones en <a href="/actas.html">Actas y citaciones</a>.</p>';
+        return;
+      }
+      await cargar();
+    })();
+  </script>
+</body>
+</html>
