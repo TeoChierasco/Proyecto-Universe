@@ -1350,3 +1350,11 @@ a.fila-acta:hover { border-color: var(--verde); transform: translateY(-1px); }
 .md-modulos { margin-left: 0.35rem; font-size: 0.72rem; font-weight: 700; color: var(--texto-suave); }
 .md-modulos.desfasado { color: #9a6a00; }
 :root[data-tema="oscuro"] .md-modulos.desfasado { color: #f0c060; }
+
+/* El área de la grilla nunca se achica por debajo de su contenido */
+.horario-principal { min-width: 0; }
+.horario-grid.con-lateral > .horario-principal { grid-column: 1; }
+.horario-grid.con-lateral > .hor-carga { grid-column: 2; }
+@media (max-width: 860px) {
+  .horario-grid.con-lateral > .hor-carga { grid-column: 1; }
+}

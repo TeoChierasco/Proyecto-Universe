@@ -131,7 +131,8 @@
           </td>`;
         }).join('')}</tr></tfoot>` : '';
 
-      const grilla = `
+      // Todo lo de la grilla va en UN solo contenedor: el layout tiene 2 columnas (grilla | panel lateral).
+      const grilla = `<div class="horario-principal">
         ${modo === 'editar' && control && !control.semana.definida ? `<p class="aviso-info aviso-jornada">${datos.sinTablaJornadas
           ? 'Para controlar las horas por día corré <strong>backend/db/jornadas.sql</strong> en Supabase.'
           : `Todavía no está definida la jornada de este curso. Definila en <a href="/cursos.html">Cursos y divisiones</a> para controlar que cada día tenga exactamente las horas que corresponden.`}</p>` : ''}
@@ -141,7 +142,8 @@
             <tbody>${filas}</tbody>
             ${pie}
           </table>
-        </div>`;
+        </div>
+      </div>`;
 
       const lateral = modo === 'editar' ? `
         <aside class="anio-bloque hor-carga">
