@@ -1358,3 +1358,7 @@ a.fila-acta:hover { border-color: var(--verde); transform: translateY(-1px); }
 @media (max-width: 860px) {
   .horario-grid.con-lateral > .hor-carga { grid-column: 1; }
 }
+
+/* Códigos: la insignia Disponible/Usado va dentro de la fila (no flotando en la esquina de la página) */
+.fila-codigo { text-align: left; }
+.fila-codigo .insignia { position: static; flex-shrink: 0; }
