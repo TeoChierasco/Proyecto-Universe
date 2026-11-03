@@ -37,7 +37,9 @@ Flujo de entrada a la aplicación:
 - Familia / hijos (el padre/tutor solicita el vínculo con el DNI del alumno y **Secretaría lo aprueba** antes de que pueda ver sus datos)
 - Inscripciones y cursos (esquemas SQL)
 - **Asistencia con cómputo de inasistencias:** presente / tarde (¼) / retiro (½) / ausente (1), tope anual configurable, avisos automáticos a la familia al llegar a 10, 15, 20 y 25 faltas, planilla mensual imprimible por curso (reglas en `backend/config/asistencia.js`)
-- **Horarios:** grilla semanal por curso que arma Secretaría (detecta choques de horario del profesor y controla la carga semanal); cada alumno, familia y profesor ve su horario (módulos en `backend/config/horarios.js`)
+- **Horarios:** grilla semanal por curso que arma Secretaría; detecta choques de horario del profesor, no permite más módulos que las horas asignadas y permite asignar el docente desde la misma pantalla. Cada alumno, familia y profesor ve su horario (módulos en `backend/config/horarios.js`)
+- **Jornada por curso (Cursos y divisiones):** primer y último módulo de cada día; el horario tiene que cubrir exactamente esa jornada (no se cargan clases fuera y se avisa si faltan módulos)
+- **Exportar a Excel y PDF:** Legajos y Actas exportan lo que se ve en pantalla (con los filtros aplicados) a .xlsx o a PDF (`frontend/js/exportar.js`, sin dependencias)
 - **Mis materias (alumno):** materias del año con profesor, módulos por semana y promedio publicado
 - **Cierre de notas y emisión de boletines:** fecha límite por trimestre, avance de carga y planillas incompletas, cierre (el profesor ya no puede modificar), emisión (alumnos y familias ven las notas + aviso en Comunicados) e impresión de los boletines de todo un curso
 - **Actas y citaciones:** citaciones a familias y actas de reunión (desarrollo, acuerdos, firmas, impresión); las familias se notifican y responden si asisten
@@ -124,7 +126,8 @@ La aplicación queda disponible en `http://localhost:3000`.
 │   │   ├── asistencia-computo.sql # llegadas tarde y avisos automáticos
 │   │   ├── horarios.sql         # grilla horaria por curso
 │   │   ├── cierre.sql           # cierre de notas y emisión de boletines
-│   │   └── actas.sql            # actas de reunión y citaciones
+│   │   ├── actas.sql            # actas de reunión y citaciones
+│   │   └── jornadas.sql         # jornada de cada curso por día
 │   └── scripts/              # Utilidades de verificación
 │
 └── frontend/             # Interfaz (HTML + CSS + JS vanilla)
@@ -162,6 +165,7 @@ La aplicación queda disponible en `http://localhost:3000`.
     ├── profesores.html
     ├── css/styles.css
     ├── js/app.js
+    ├── js/exportar.js        # exportar listados a Excel (.xlsx) y PDF
     └── assets/               # logo.svg · logo-oscuro.svg · isotipo.svg
 ```
 
@@ -175,7 +179,7 @@ La aplicación queda disponible en `http://localhost:3000`.
 3. Ejecutar los esquemas: Supabase → **SQL Editor** → pegar cada archivo de
    `backend/db/` → **Run**, en este orden:
    `schema.sql` → `academico.sql` → `cursos.sql` → `familia.sql` → `inscripciones.sql` →
-   `asistencia.sql` → `comunicados.sql` → `secretaria.sql` → `correcciones-01.sql` → `calificaciones.sql` → `bajas.sql` → `asistencia-computo.sql` → `horarios.sql` → `cierre.sql` → `actas.sql`.
+   `asistencia.sql` → `comunicados.sql` → `secretaria.sql` → `correcciones-01.sql` → `calificaciones.sql` → `bajas.sql` → `asistencia-computo.sql` → `horarios.sql` → `cierre.sql` → `actas.sql` → `jornadas.sql`.
    Todos son idempotentes: se pueden volver a correr sin duplicar datos.
 4. Verificar la conexión: `node backend/scripts/test-conexion.js`.
 

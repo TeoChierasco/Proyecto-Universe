@@ -69,8 +69,21 @@
       return h % TONOS;
     }
 
+    const reloj = (min) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
+
+    // ¿El módulo está dentro de la jornada del curso ese día?
+    function enJornada(dia, modulo) {
+      const js = datos.jornadas || [];
+      if (!js.length) return true; // sin jornada definida: no se restringe
+      const j = js.find((x) => x.dia === dia);
+      return !!j && modulo >= j.desde && modulo <= j.hasta;
+    }
+
     function celda(dia, modulo) {
       const c = datos.clases.find((x) => x.dia === dia && x.modulo === modulo);
+      if (modo === 'editar' && !enJornada(dia, modulo) && !c) {
+        return '<td class="hor-celda fuera-jornada" title="Fuera de la jornada del curso"></td>';
+      }
       if (modo === 'editar') {
         const opciones = ['<option value="">— Libre —</option>']
           .concat(datos.carga.map((m) => `<option value="${m.materiaId}" ${c && c.materiaId === m.materiaId ? 'selected' : ''}>${esc(m.materia)}</option>`))
@@ -102,11 +115,31 @@
         return recreo ? fila + `<tr class="hor-recreo"><td colspan="${dias.length + 1}">${esc(recreo.texto)}</td></tr>` : fila;
       }).join('');
 
+      const control = datos.control;
+      const ESTADO = { completo: ['nivel-normal', 'Completo'], incompleto: ['nivel-atencion', 'Faltan'], fuera: ['nivel-critico', 'Fuera de jornada'], sin_jornada: ['', 'No cursa'] };
+      const cabeceraDia = (d) => {
+        const cd = control && control.dias.find((x) => x.dia === d.id);
+        return `<th>${esc(d.nombre)}${modo === 'editar' && cd && cd.jornada ? `<span class="estado-periodo">${esc(cd.jornada.texto)}</span>` : ''}</th>`;
+      };
+      const pie = modo === 'editar' && control && control.semana.definida ? `
+        <tfoot><tr><th class="hor-hora">Control</th>${dias.map((d) => {
+          const cd = control.dias.find((x) => x.dia === d.id);
+          const [clase, texto] = ESTADO[cd.estado];
+          return `<td class="hor-control">
+            ${cd.jornada ? `<span class="hor-cuenta">${cd.modulosCargados - cd.fuera}/${cd.modulosJornada} mód.</span><span class="hor-prof" title="${esc(cd.horasCargadas)} de ${esc(cd.horasJornada)}">${reloj(cd.minCargados)} / ${reloj(cd.minJornada)} h</span>` : ''}
+            ${clase ? `<span class="nivel-faltas ${clase}">${texto}${cd.estado === 'incompleto' ? ' ' + cd.faltan : ''}</span>` : `<span class="codigo-meta">${texto}</span>`}
+          </td>`;
+        }).join('')}</tr></tfoot>` : '';
+
       const grilla = `
+        ${modo === 'editar' && control && !control.semana.definida ? `<p class="aviso-info aviso-jornada">${datos.sinTablaJornadas
+          ? 'Para controlar las horas por día corré <strong>backend/db/jornadas.sql</strong> en Supabase.'
+          : `Todavía no está definida la jornada de este curso. Definila en <a href="/cursos.html">Cursos y divisiones</a> para controlar que cada día tenga exactamente las horas que corresponden.`}</p>` : ''}
         <div class="planilla-contenedor">
           <table class="planilla horario">
-            <thead><tr><th class="hor-hora">Hora</th>${dias.map((d) => `<th>${esc(d.nombre)}</th>`).join('')}</tr></thead>
+            <thead><tr><th class="hor-hora">Hora</th>${dias.map(cabeceraDia).join('')}</tr></thead>
             <tbody>${filas}</tbody>
+            ${pie}
           </table>
         </div>`;
 
@@ -116,11 +149,21 @@
           <ul>
             ${datos.carga.map((m) => {
               const ok = m.horasAsignadas == null || m.horasAsignadas === m.modulos;
-              return `<li class="${ok ? '' : 'desfasada'}">
+              const asignar = !m.profesor && (datos.profesores || []).length ? `
+                <form class="asignar-docente" data-materia="${m.materiaId}">
+                  <select name="profesor" class="input-mini" aria-label="Profesor para ${esc(m.materia)}">
+                    <option value="">Elegir profesor…</option>
+                    ${datos.profesores.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('')}
+                  </select>
+                  <input name="horas" class="input-mini" type="number" min="0" max="40" value="${m.modulos || ''}" placeholder="h/sem" aria-label="Horas semanales" />
+                  <button type="submit" class="btn-mini">Asignar</button>
+                </form>` : '';
+              return `<li class="${ok ? '' : 'desfasada'}" id="carga-${m.materiaId}">
                 <span class="md-materia">${esc(m.materia)}</span>
-                <span class="codigo-meta">${m.profesor ? esc(m.profesor) : 'Sin docente'}</span>
+                <span class="codigo-meta ${m.profesor ? '' : 'hor-sin'}">${m.profesor ? esc(m.profesor) : 'Sin docente'}</span>
                 <span class="hor-cuenta">${m.modulos}${m.horasAsignadas != null ? ` / ${m.horasAsignadas}` : ''} mód.
-                  ${ok ? '' : '<span class="nivel-faltas nivel-atencion">Revisar</span>'}</span>
+                  ${ok ? '' : `<span class="nivel-faltas nivel-atencion">${m.modulos < m.horasAsignadas ? 'Faltan ' + (m.horasAsignadas - m.modulos) : 'Revisar'}</span>`}</span>
+                ${asignar}
               </li>`;
             }).join('')}
           </ul>
@@ -130,6 +173,27 @@
       document.getElementById('contenido').innerHTML = `<div class="horario-grid ${modo === 'editar' ? 'con-lateral' : ''}">${grilla}${lateral}</div>`;
 
       document.querySelectorAll('.hor-select').forEach((sel) => sel.addEventListener('change', () => guardarCelda(sel)));
+
+      // Asignar profesor a una materia "Sin docente" sin salir del horario.
+      document.querySelectorAll('.asignar-docente').forEach((f) => f.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const profesorId = f.profesor.value;
+        if (!profesorId) { App.toast('Elegí un profesor'); return; }
+        try {
+          await api('POST', '/api/profesores/asignaciones', {
+            profesorId, materiaId: Number(f.dataset.materia), cursoId: datos.curso.id, horas: f.horas.value,
+          });
+          App.toast('Profesor asignado');
+          await cargarCurso(datos.curso.id);
+        } catch (error) { App.toast(error.message); }
+      }));
+      // Tocar "Sin docente" en la grilla lleva al formulario de asignación.
+      document.querySelectorAll('.hor-celda .hor-sin').forEach((el) => el.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const sel = el.closest('td').querySelector('.hor-select');
+        const item = document.getElementById(`carga-${sel ? sel.value : ''}`);
+        if (item) { item.scrollIntoView({ behavior: 'smooth', block: 'center' }); const s = item.querySelector('select'); if (s) s.focus(); }
+      }));
     }
 
     async function guardarCelda(sel) {

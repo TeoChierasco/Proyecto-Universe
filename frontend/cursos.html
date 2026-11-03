@@ -70,6 +70,11 @@
                 <span class="curso-dato ${c.materias && c.materiasConDocente < c.materias ? 'alerta' : ''}">
                   ${c.materiasConDocente}/${c.materias} materias con docente
                 </span>
+                <span class="curso-dato ${c.horario && c.horario.definida && !c.horario.completo ? 'alerta' : ''}">
+                  ${!c.horario || !c.horario.definida ? 'Jornada sin definir'
+                    : c.horario.completo ? `Horario completo · ${c.horario.modulosJornada} mód.`
+                    : `Horario: ${c.horario.modulosCargados}/${c.horario.modulosJornada} mód.`}
+                </span>
               </button>`).join('')}
           </div>
         </div>`).join('');
@@ -78,13 +83,30 @@
         b.addEventListener('click', () => seleccionar(Number(b.dataset.curso))));
     }
 
-    async function seleccionar(id) {
+    async function apiEnviar(metodo, ruta, body) {
+      const r = await fetch(ruta, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${App.obtenerToken()}` },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Ocurrió un error.');
+      return data;
+    }
+
+    async function recargarResumen() {
+      try { estado.cursos = (await api('/api/cursos')).cursos; renderCursos(); } catch (e) { /* sin cambios */ }
+    }
+
+    async function seleccionar(id, silencioso) {
       estado.seleccionado = id;
       renderCursos();
       const det = document.getElementById('detalle');
       det.hidden = false;
-      det.innerHTML = '<p class="cargando">Cargando curso…</p>';
-      det.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!silencioso) {
+        det.innerHTML = '<p class="cargando">Cargando curso…</p>';
+        det.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
 
       try {
         const data = await api(`/api/cursos/${id}`);
@@ -94,7 +116,43 @@
       }
     }
 
-    function renderDetalle({ curso, alumnos, materias, totalDocumentos }) {
+    const ESTADO_DIA = {
+      completo: ['nivel-normal', 'Completo'],
+      incompleto: ['nivel-atencion', 'Faltan módulos'],
+      fuera: ['nivel-critico', 'Clases fuera de jornada'],
+      sin_jornada: ['', 'No cursa'],
+    };
+
+    function bloqueJornada(curso, horario, modulos) {
+      if (!horario) return '<p class="ayuda-campo">Para controlar el horario corré backend/db/horarios.sql y jornadas.sql en Supabase.</p>';
+      if (horario.sinTablaJornadas) return '<p class="ayuda-campo">Para definir la jornada corré backend/db/jornadas.sql en Supabase.</p>';
+      const opt = (campo, sel) => '<option value="">—</option>' + modulos.map((m) =>
+        `<option value="${m.id}" ${m.id === sel ? 'selected' : ''}>${m.id}.º · ${campo === 'desde' ? m.inicio : m.fin}</option>`).join('');
+      const s = horario.control.semana;
+      return `
+        <table class="planilla tabla-jornada">
+          <thead><tr><th class="col-alumno">Día</th><th>Desde</th><th>Hasta</th><th>Jornada</th><th>En el horario</th><th>Control</th></tr></thead>
+          <tbody>
+            ${horario.control.dias.map((d) => {
+              const [clase, texto] = ESTADO_DIA[d.estado];
+              return `<tr data-dia="${d.dia}">
+                <td class="col-alumno"><strong>${esc(d.nombre)}</strong></td>
+                <td><select class="input-mini" data-campo="desde">${opt('desde', d.jornada && d.jornada.desde)}</select></td>
+                <td><select class="input-mini" data-campo="hasta">${opt('hasta', d.jornada && d.jornada.hasta)}</select></td>
+                <td>${d.jornada ? `${d.modulosJornada} mód. · ${esc(d.horasJornada)}` : '—'}</td>
+                <td>${d.modulosCargados} mód.${d.modulosCargados ? ` · ${esc(d.horasCargadas)}` : ''}</td>
+                <td>${clase ? `<span class="nivel-faltas ${clase}">${texto}${d.estado === 'incompleto' ? ` (${d.faltan})` : d.estado === 'fuera' && d.fuera ? ` (${d.fuera})` : ''}</span>` : `<span class="codigo-meta">${texto}</span>`}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+          <tfoot><tr><td class="col-alumno"><strong>Semana</strong></td><td></td><td></td>
+            <td><strong>${s.modulosJornada} mód.</strong></td><td><strong>${s.modulosCargados} mód.</strong></td>
+            <td>${!s.definida ? '<span class="codigo-meta">Definí la jornada</span>' : s.completo ? '<span class="nivel-faltas nivel-normal">Coherente</span>' : '<span class="nivel-faltas nivel-atencion">Revisar</span>'}</td></tr></tfoot>
+        </table>
+        <p class="ayuda-campo">Elegí el primer y el último módulo de cada día. El horario de ese día tiene que cubrir exactamente esos módulos: no se pueden cargar clases fuera de la jornada.</p>`;
+    }
+
+    function renderDetalle({ curso, alumnos, materias, totalDocumentos, horario, modulos }) {
       const det = document.getElementById('detalle');
       const sinDocente = materias.filter((m) => !m.profesor).length;
       const legajosIncompletos = alumnos.filter((a) => !a.legajoCompleto).length;
@@ -105,6 +163,7 @@
           <div class="detalle-acciones">
             <a class="btn-mini" href="/alumnos.html">Asignar alumnos</a>
             <a class="btn-mini" href="/profesores.html">Asignar docentes</a>
+            <a class="btn-mini" href="/horarios.html?curso=${curso.id}">Abrir horario</a>
           </div>
         </div>
 
@@ -132,13 +191,33 @@
                   <li class="${m.profesor ? '' : 'sin-docente'}">
                     <span class="md-materia">${esc(m.nombre)}</span>
                     <span class="md-profesor">
-                      ${m.profesor ? esc(m.profesor) + (m.horas ? ` · ${m.horas} h` : '') : 'Sin docente'}
+                      ${m.profesor ? esc(m.profesor) : 'Sin docente'}
+                      ${m.modulosEnHorario != null ? `<span class="md-modulos ${m.horas != null && m.horas !== m.modulosEnHorario ? 'desfasado' : ''}" title="Módulos en el horario / horas semanales asignadas">${m.modulosEnHorario}${m.horas != null ? '/' + m.horas : ''} mód.</span>` : (m.horas ? ` · ${m.horas} h` : '')}
                       ${m.asignacionId ? `<a class="md-notas" href="/notas.html?asignacion=${m.asignacionId}">notas</a>` : ''}
                     </span>
                   </li>`).join('')}
               </ul>` : '<p class="anio-proximamente">No hay materias cargadas para este año.</p>'}
           </div>
+        </div>
+
+        <div class="anio-bloque" style="margin-top:1.2rem">
+          <span class="sub-titulo">Jornada y control del horario</span>
+          ${bloqueJornada(curso, horario, modulos || [])}
         </div>`;
+
+      det.querySelectorAll('.tabla-jornada tbody tr').forEach((tr) => {
+        tr.querySelectorAll('select').forEach((sel) => sel.addEventListener('change', async () => {
+          const desde = tr.querySelector('[data-campo="desde"]').value;
+          const hasta = tr.querySelector('[data-campo="hasta"]').value;
+          if ((desde && !hasta) || (!desde && hasta)) return; // esperar el otro extremo
+          try {
+            const r = await apiEnviar('PUT', `/api/horarios/curso/${curso.id}/jornada`, { dia: Number(tr.dataset.dia), desde: desde || null, hasta: hasta || null });
+            App.toast(r.message);
+          } catch (error) { App.toast(error.message); }
+          await seleccionar(curso.id, true);
+          await recargarResumen();
+        }));
+      });
     }
 
     async function cargar() {

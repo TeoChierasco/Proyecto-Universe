@@ -79,6 +79,8 @@
           <input type="text" class="input-mini" id="buscar" placeholder="Buscar por alumno, curso o asunto…" />
         </div>
 
+        <div class="barra-exportar lista-ancha" id="exportar" hidden></div>
+
         <div class="lista-usuarios lista-ancha" id="lista">
           <p class="cargando">Cargando actas…</p>
         </div>
@@ -89,6 +91,7 @@
   </div>
 
   <script src="/js/app.js"></script>
+  <script src="/js/exportar.js"></script>
   <script>
     let estado = { actas: [], opciones: { cursos: [], alumnos: [] }, vista: 'proximas' };
     const VISTA_ESTADO = { proximas: 'programada', realizadas: 'realizada', canceladas: 'cancelada' };
@@ -111,13 +114,9 @@
       return data;
     }
 
-    function renderLista() {
+    // Actas de la pestaña y búsqueda actuales (lo mismo que se exporta).
+    function visibles() {
       const filtro = (document.getElementById('buscar').value || '').toLowerCase().trim();
-      ['proximas', 'realizadas', 'canceladas'].forEach((v) => {
-        document.getElementById(`n-${v}`).textContent = estado.actas.filter((a) => a.estado === VISTA_ESTADO[v]).length;
-      });
-      document.querySelectorAll('[data-vista]').forEach((b) => b.classList.toggle('activa', b.dataset.vista === estado.vista));
-
       let lista = estado.actas.filter((a) => a.estado === VISTA_ESTADO[estado.vista]);
       // Programadas: la más próxima primero.
       if (estado.vista === 'proximas') lista = lista.slice().sort((x, y) => (x.fecha + (x.hora || '')).localeCompare(y.fecha + (y.hora || '')));
@@ -125,6 +124,17 @@
         lista = lista.filter((a) => [a.asunto, a.curso, a.alumno && a.alumno.nombre, a.alumno && a.alumno.apellido, a.creadoNombre]
           .join(' ').toLowerCase().includes(filtro));
       }
+      return lista;
+    }
+
+    function renderLista() {
+      const filtro = (document.getElementById('buscar').value || '').toLowerCase().trim();
+      ['proximas', 'realizadas', 'canceladas'].forEach((v) => {
+        document.getElementById(`n-${v}`).textContent = estado.actas.filter((a) => a.estado === VISTA_ESTADO[v]).length;
+      });
+      document.querySelectorAll('[data-vista]').forEach((b) => b.classList.toggle('activa', b.dataset.vista === estado.vista));
+
+      const lista = visibles();
       const cont = document.getElementById('lista');
       if (!lista.length) {
         cont.innerHTML = `<p class="cargando">${filtro ? 'Nada coincide con la búsqueda.' : 'No hay actas en esta sección.'}</p>`;
@@ -162,6 +172,46 @@
         lista.map((a) => `<option value="${a.id}">${esc(a.nombre)}</option>`).join('');
     }
 
+    function datosExportar() {
+      const lista = visibles();
+      const pestaña = { proximas: 'programadas', realizadas: 'realizadas', canceladas: 'canceladas' }[estado.vista];
+      const busqueda = (document.getElementById('buscar').value || '').trim();
+      const notif = (a) => (a.tipo !== 'citacion' ? '—' : !a.notificaciones ? 'Sin notificar' : a.noPueden ? 'Avisó que no puede' : 'Notificada');
+      return {
+        archivo: `actas-${pestaña}`,
+        hoja: 'Actas',
+        titulo: `Actas y citaciones ${pestaña}`,
+        subtitulo: `${lista.length} registro${lista.length === 1 ? '' : 's'}${busqueda ? ` · búsqueda: "${busqueda}"` : ''}`,
+        apaisado: true,
+        columnas: [
+          { titulo: 'N.º', ancho: 6, numero: true },
+          { titulo: 'Fecha', ancho: 11 },
+          { titulo: 'Hora', ancho: 7 },
+          { titulo: 'Tipo', ancho: 10 },
+          { titulo: 'Motivo / asunto', ancho: 40 },
+          { titulo: 'Alumno/a', ancho: 24 },
+          { titulo: 'Curso', ancho: 8 },
+          { titulo: 'Lugar', ancho: 16 },
+          { titulo: 'Convoca', ancho: 20 },
+          { titulo: 'Familia', ancho: 16 },
+          ...(estado.vista === 'realizadas' ? [{ titulo: 'Acuerdos', ancho: 50 }] : []),
+        ],
+        filas: lista.map((a) => [
+          a.id,
+          `${a.fecha.slice(8)}/${a.fecha.slice(5, 7)}/${a.fecha.slice(0, 4)}`,
+          a.hora || '',
+          TIPO[a.tipo],
+          a.asunto,
+          a.alumno ? `${a.alumno.apellido}, ${a.alumno.nombre}` : '—',
+          a.curso || '—',
+          a.lugar || '',
+          a.creadoNombre || '',
+          notif(a),
+          ...(estado.vista === 'realizadas' ? [a.acuerdos || ''] : []),
+        ]),
+      };
+    }
+
     async function cargar() {
       try {
         const data = await api('GET', '/api/actas');
@@ -169,6 +219,9 @@
         document.getElementById('pestanias').hidden = false;
         document.getElementById('barra').hidden = false;
         document.getElementById('btn-nueva').hidden = false;
+        const barra = document.getElementById('exportar');
+        Exportar.botones(barra, datosExportar);
+        barra.hidden = false;
         renderLista();
       } catch (error) {
         document.getElementById('lista').innerHTML = `<p class="cargando">${esc(error.message)}</p>`;

@@ -1315,3 +1315,38 @@ a.fila-acta:hover { border-color: var(--verde); transform: translateY(-1px); }
 }
 @media (max-width: 620px) { .acta-datos { grid-template-columns: 1fr; } }
 .fila-asistencia { text-align: left; }
+
+/* =========================================================
+   Exportar (Excel / PDF) y cierre de ficha de legajo
+   ========================================================= */
+.barra-exportar { width: 100%; margin-top: 1rem; display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; }
+.exportar-etiqueta { font-size: 0.82rem; color: var(--texto-suave); margin-right: 0.2rem; }
+.ficha-acciones {
+  display: flex; justify-content: flex-end; align-items: center; gap: 0.7rem; flex-wrap: wrap;
+  margin-top: 1.2rem; padding-top: 1rem; border-top: 1px dashed var(--borde);
+}
+.ficha-acciones .boton { padding: 0.7rem 1.8rem; font-size: 0.95rem; }
+.ficha-acciones .codigo-meta { margin-right: auto; color: #9a6a00; font-weight: 600; }
+:root[data-tema="oscuro"] .ficha-acciones .codigo-meta { color: #f0c060; }
+.ficha-docs .ayuda-campo { display: block; margin-top: 0.4rem; }
+
+/* ---------- Jornada del curso y control de horas ---------- */
+.hor-celda.fuera-jornada {
+  background: repeating-linear-gradient(135deg, var(--superficie-2), var(--superficie-2) 6px, transparent 6px, transparent 12px);
+}
+.hor-celda.editable .hor-sin { position: relative; z-index: 2; cursor: pointer; text-decoration: underline dotted; }
+.horario tfoot th, .horario tfoot td { background: var(--superficie-2); border-top: 2px solid var(--borde); }
+.hor-control { text-align: center; vertical-align: top; padding: 0.45rem 0.3rem !important; }
+.hor-control .hor-cuenta, .hor-control .hor-prof { display: block; }
+.hor-control .nivel-faltas { margin: 0.25rem 0 0; }
+.horario thead .estado-periodo { color: var(--verde-osc); font-weight: 600; }
+.aviso-jornada { max-width: none; margin: 0 0 1rem; text-align: left; }
+.asignar-docente { display: flex; gap: 0.3rem; margin-top: 0.4rem; flex-wrap: wrap; }
+.asignar-docente select { flex: 1 1 100%; font-size: 0.8rem; padding: 0.35rem 0.5rem; }
+.asignar-docente input { width: 4.2rem; font-size: 0.8rem; padding: 0.35rem 0.4rem; }
+.tabla-jornada { margin-top: 0.6rem; box-shadow: none; }
+.tabla-jornada select { padding: 0.3rem 0.4rem; font-size: 0.82rem; }
+.tabla-jornada tfoot td { background: var(--superficie-2); border-top: 2px solid var(--borde); }
+.md-modulos { margin-left: 0.35rem; font-size: 0.72rem; font-weight: 700; color: var(--texto-suave); }
+.md-modulos.desfasado { color: #9a6a00; }
+:root[data-tema="oscuro"] .md-modulos.desfasado { color: #f0c060; }

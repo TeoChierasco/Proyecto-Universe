@@ -9,6 +9,7 @@
 const express = require('express');
 const { supabaseAdmin } = require('../config/supabase');
 const requireAuth = require('../middleware/requireAuth');
+const { grillaCurso, controlDias } = require('./horarios');
 
 const router = express.Router();
 
@@ -43,12 +44,26 @@ router.get('/', requireAuth, soloAdmin, async (req, res) => {
   }
 
   const asignaciones = datos(asiRes);
-  const cursos = curRes.data.map((c) => ({
-    ...c,
-    alumnos: insRes.data.filter((i) => i.curso_id === c.id).length,
-    materias: matRes.data.filter((m) => m.anio === c.anio).length,
-    materiasConDocente: asignaciones.filter((a) => a.curso_id === c.id).length,
-  }));
+  // Horario vs. jornada de cada curso (si las tablas existen).
+  const [horRes, jorRes] = await Promise.all([
+    supabaseAdmin.from('horarios').select('curso_id, dia, modulo'),
+    supabaseAdmin.from('curso_jornadas').select('curso_id, dia, modulo_desde, modulo_hasta'),
+  ]);
+  const horarios = datos(horRes);
+  const jornadas = datos(jorRes);
+  const cursos = curRes.data.map((c) => {
+    const control = controlDias(
+      horarios.filter((h) => h.curso_id === c.id),
+      jornadas.filter((j) => j.curso_id === c.id).map((j) => ({ dia: j.dia, desde: j.modulo_desde, hasta: j.modulo_hasta })),
+    );
+    return {
+      ...c,
+      alumnos: insRes.data.filter((i) => i.curso_id === c.id).length,
+      materias: matRes.data.filter((m) => m.anio === c.anio).length,
+      materiasConDocente: asignaciones.filter((a) => a.curso_id === c.id).length,
+      horario: control.semana,
+    };
+  });
 
   const { count: totalAlumnos } = await supabaseAdmin
     .from('perfiles').select('id', { count: 'exact', head: true }).eq('rol', 'alumno').eq('situacion', 'activo');
@@ -116,7 +131,19 @@ router.get('/:id', requireAuth, soloAdmin, async (req, res) => {
     };
   });
 
-  return res.json({ ok: true, curso, alumnos, materias, totalDocumentos: TOTAL_DOCUMENTOS });
+  // Jornada del curso y control contra el horario cargado.
+  let horario = null;
+  try {
+    const g = await grillaCurso(id);
+    horario = { control: g.control, sinTablaJornadas: g.sinTablaJornadas };
+    materias.forEach((m) => {
+      m.modulosEnHorario = g.clases.filter((c) => c.materiaId === m.id).length;
+    });
+  } catch (e) {
+    horario = null; // falta horarios.sql
+  }
+
+  return res.json({ ok: true, curso, alumnos, materias, totalDocumentos: TOTAL_DOCUMENTOS, horario, modulos: require('../config/horarios').MODULOS });
 });
 
 module.exports = router;

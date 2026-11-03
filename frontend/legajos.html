@@ -39,6 +39,8 @@
           </select>
         </div>
 
+        <div class="barra-exportar lista-ancha" id="exportar" hidden></div>
+
         <div class="lista-usuarios lista-ancha" id="lista">
           <p class="cargando">Cargando legajos…</p>
         </div>
@@ -49,6 +51,7 @@
   </div>
 
   <script src="/js/app.js"></script>
+  <script src="/js/exportar.js"></script>
   <script>
     let estado = { alumnos: [], cursos: [], documentos: [], abierto: null };
 
@@ -102,13 +105,12 @@
       document.getElementById('c-pendientes').textContent = total - completos;
     }
 
-    function renderLista() {
+    // Alumnos que cumplen los filtros de la pantalla (lo mismo que se exporta).
+    function filtrados() {
       const filtro = (document.getElementById('buscar').value || '').toLowerCase().trim();
       const curso = document.getElementById('filtro-curso').value;
       const est = document.getElementById('filtro-estado').value;
-      const cont = document.getElementById('lista');
-
-      const visibles = estado.alumnos.filter((a) => {
+      return estado.alumnos.filter((a) => {
         const completo = a.documentacion.completos === a.documentacion.total;
         if (est === 'egresados') { if (a.situacion === 'activo') return false; }
         else if (a.situacion !== 'activo') return false;
@@ -119,6 +121,11 @@
         if (!filtro) return true;
         return `${a.nombre} ${a.apellido} ${a.documento || ''}`.toLowerCase().includes(filtro);
       });
+    }
+
+    function renderLista() {
+      const cont = document.getElementById('lista');
+      const visibles = filtrados();
 
       if (!visibles.length) {
         cont.innerHTML = '<p class="cargando">No hay alumnos que coincidan con el filtro.</p>';
@@ -198,7 +205,6 @@
               <label>Observaciones</label>
               <textarea name="observaciones" rows="3" maxlength="1000" placeholder="Información relevante (salud, situación familiar, etc.)">${esc(l.observaciones)}</textarea>
             </div>
-            <button type="submit" class="boton boton-primario">Guardar datos</button>
             ${l.actualizadoEn ? `<span class="ayuda-campo">Última actualización: ${fechaCorta(l.actualizadoEn)}</span>` : ''}
             <div class="ficha-enlaces">
               <a class="btn-mini" href="/boletin.html?id=${id}">Ver boletín</a>
@@ -218,26 +224,67 @@
                   ${Object.entries(ESTADOS_DOC).map(([v, t]) => `<option value="${v}" ${v === d.estado ? 'selected' : ''}>${t}</option>`).join('')}
                 </select>
               </div>`).join('')}
+            <p class="ayuda-campo">Cada documento se guarda al elegir su estado. La ficha queda abierta hasta que toques <strong>Completar legajo</strong>.</p>
           </div>
+        </div>
+        <div class="ficha-acciones">
+          <span class="codigo-meta" id="estado-ficha-${id}"></span>
+          <button type="button" class="btn-mini" data-cerrar-ficha>Cerrar sin guardar datos</button>
+          <button type="button" class="boton boton-primario" data-completar>Completar legajo</button>
         </div>`;
 
-      cont.querySelector(`#form-${id}`).addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const f = new FormData(e.target);
+      const form = cont.querySelector(`#form-${id}`);
+      const original = new URLSearchParams(new FormData(form)).toString();
+      const cambiosEnDatos = () => new URLSearchParams(new FormData(form)).toString() !== original;
+      const aviso = cont.querySelector(`#estado-ficha-${id}`);
+      const marcarPendiente = () => { aviso.textContent = cambiosEnDatos() ? 'Datos personales sin guardar' : ''; };
+      form.addEventListener('input', marcarPendiente);
+      form.addEventListener('submit', (e) => e.preventDefault());
+
+      // Documentos: se guardan uno por uno SIN recargar ni cerrar la ficha.
+      cont.querySelectorAll('[data-doc]').forEach((sel) => sel.addEventListener('change', async () => {
+        const fila = sel.closest('.doc-fila');
+        sel.disabled = true;
         try {
-          await api('PUT', `/api/legajos/${id}`, Object.fromEntries(f.entries()));
-          App.toast('Legajo guardado');
-        } catch (error) { App.toast(error.message); }
+          const r = await api('PATCH', `/api/legajos/${id}/documentos/${sel.dataset.doc}`, { estado: sel.value });
+          fila.className = `doc-fila doc-${sel.value}`;
+          const info = fila.querySelector('.doc-info');
+          const fecha = info.querySelector('.codigo-meta');
+          if (fecha) fecha.remove();
+          if (sel.value === 'entregado' && r.fechaEntrega) {
+            info.insertAdjacentHTML('beforeend', `<span class="codigo-meta">Entregado el ${fechaCorta(r.fechaEntrega)}</span>`);
+          }
+          actualizarResumen(id, sel.dataset.doc, sel.value);
+          App.toast('Guardado');
+        } catch (error) {
+          App.toast(error.message);
+        } finally {
+          sel.disabled = false;
+        }
+      }));
+
+      // Completar legajo: guarda los datos personales, refresca la lista y cierra la ficha.
+      cont.querySelector('[data-completar]').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true; btn.textContent = 'Guardando…';
+        try {
+          await api('PUT', `/api/legajos/${id}`, Object.fromEntries(new FormData(form).entries()));
+          const a = estado.alumnos.find((x) => x.id === id);
+          const faltan = a ? a.documentacion.pendientes.length : 0;
+          App.toast(faltan ? `Legajo guardado · faltan ${faltan} documento${faltan === 1 ? '' : 's'}` : 'Legajo completo y guardado');
+          estado.abierto = null;
+          await cargar();
+        } catch (error) {
+          App.toast(error.message);
+          btn.disabled = false; btn.textContent = 'Completar legajo';
+        }
       });
 
-      cont.querySelectorAll('[data-doc]').forEach((s) => s.addEventListener('change', async () => {
-        try {
-          await api('PATCH', `/api/legajos/${id}/documentos/${s.dataset.doc}`, { estado: s.value });
-          App.toast('Documentación actualizada');
-          actualizarResumen(id, s.dataset.doc, s.value);
-          await cargarFicha(id);
-        } catch (error) { App.toast(error.message); }
-      }));
+      cont.querySelector('[data-cerrar-ficha]').addEventListener('click', async () => {
+        if (cambiosEnDatos() && !confirm('Hay datos personales sin guardar. ¿Cerrar igual? (Los documentos ya quedaron guardados.)')) return;
+        estado.abierto = null;
+        await cargar();
+      });
     }
 
     // Recalcula el resumen del alumno sin volver a pedir toda la lista.
@@ -251,6 +298,43 @@
       renderContadores();
       const fila = document.querySelector(`.fila-legajo[data-id="${id}"] .progreso`);
       if (fila) fila.outerHTML = barraProgreso(a.documentacion);
+    }
+
+    function datosExportar() {
+      const visibles = filtrados();
+      const est = document.getElementById('filtro-estado');
+      const cur = document.getElementById('filtro-curso');
+      const etiquetaEstado = { '': 'Legajos', pendientes: 'Legajos con documentación pendiente', completos: 'Legajos completos', egresados: 'Legajos de bajas y pases' }[est.value];
+      const filtroTexto = (document.getElementById('buscar').value || '').trim();
+      const sub = [cur.value ? cur.options[cur.selectedIndex].text : 'Todos los cursos', `${visibles.length} alumno${visibles.length === 1 ? '' : 's'}`]
+        .concat(filtroTexto ? [`búsqueda: "${filtroTexto}"`] : []).join(' · ');
+      const docs = estado.documentos;
+      return {
+        archivo: `${etiquetaEstado}-${cur.value ? cur.options[cur.selectedIndex].text : 'todos'}`,
+        hoja: 'Legajos',
+        titulo: etiquetaEstado,
+        subtitulo: sub,
+        apaisado: true,
+        columnas: [
+          { titulo: 'Alumno/a', ancho: 26 },
+          { titulo: 'DNI', ancho: 12 },
+          { titulo: 'Curso', ancho: 9 },
+          { titulo: 'Docs entregados', ancho: 11, numero: true },
+          ...docs.map((d) => ({ titulo: d.nombre, ancho: 16 })),
+          { titulo: 'Falta', ancho: 40 },
+        ],
+        filas: visibles.map((a) => {
+          const pend = new Set(a.documentacion.pendientes);
+          return [
+            `${a.apellido}, ${a.nombre}`,
+            a.documento || '',
+            a.situacion === 'activo' ? cursoLabel(a.cursoId) : (a.situacion === 'pase' ? 'Pase' : 'Baja'),
+            `${a.documentacion.completos}/${a.documentacion.total}`,
+            ...docs.map((d) => (pend.has(d.tipo) ? 'Pendiente' : 'OK')),
+            a.documentacion.pendientes.map(nombreDoc).join(', ') || '—',
+          ];
+        }),
+      };
     }
 
     async function cargar() {
@@ -270,6 +354,9 @@
 
         document.getElementById('contadores').hidden = false;
         document.getElementById('filtros').hidden = false;
+        const barra = document.getElementById('exportar');
+        Exportar.botones(barra, datosExportar);
+        barra.hidden = false;
         renderContadores();
         renderLista();
       } catch (error) {
