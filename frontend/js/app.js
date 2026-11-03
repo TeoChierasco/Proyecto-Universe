@@ -258,7 +258,9 @@ const App = {
     });
     const cuerpo = await respuesta.json().catch(() => ({}));
     if (!respuesta.ok) {
-      throw new Error(cuerpo.error || 'Ocurrió un error inesperado.');
+      const error = new Error(cuerpo.error || 'Ocurrió un error inesperado.');
+      error.datos = cuerpo; // p. ej. { codigo: 'rol_distinto' }
+      throw error;
     }
     return cuerpo;
   },

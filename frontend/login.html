@@ -75,12 +75,18 @@
         boton.disabled = true;
         boton.textContent = 'Ingresando…';
         try {
-          const respuesta = await App.post('/api/auth/login', { email, password });
+          // Se envían el rol y el nivel elegidos: el servidor verifica que la cuenta sea de ese rol.
+          const respuesta = await App.post('/api/auth/login', { email, password, rol: seleccion.rol, nivel: seleccion.nivel });
           App.guardarSesion(respuesta.token, respuesta.usuario, respuesta.refreshToken);
           App.mostrarMensaje(mensaje, respuesta.message, 'exito');
           window.location.href = '/panel.html';
         } catch (error) {
           App.mostrarMensaje(mensaje, error.message, 'error');
+          const codigo = error.datos && error.datos.codigo;
+          if (codigo === 'rol_distinto' || codigo === 'nivel_distinto') {
+            mensaje.insertAdjacentHTML('beforeend',
+              ` <a class="enlace-cambiar-rol" href="/niveles.html">Cambiar ${codigo === 'rol_distinto' ? 'de rol' : 'de nivel'}</a>`);
+          }
           boton.disabled = false;
           boton.textContent = 'Ingresar';
         }

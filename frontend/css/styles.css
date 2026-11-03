@@ -1362,3 +1362,4 @@ a.fila-acta:hover { border-color: var(--verde); transform: translateY(-1px); }
 /* Códigos: la insignia Disponible/Usado va dentro de la fila (no flotando en la esquina de la página) */
 .fila-codigo { text-align: left; }
 .fila-codigo .insignia { position: static; flex-shrink: 0; }
+.enlace-cambiar-rol { display: inline-block; margin-left: 0.3rem; font-weight: 700; color: inherit; text-decoration: underline; }

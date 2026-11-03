@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { supabaseAdmin } = require('../config/supabase');
 const requireAuth = require('../middleware/requireAuth');
+const { normalizarEmail, emailValido, emailEnUso } = require('../utils/email');
 
 const router = express.Router();
 
@@ -65,12 +66,28 @@ router.post('/', requireAuth, async (req, res) => {
 
   const nombre = (req.body.nombre || '').trim();
   const apellido = (req.body.apellido || '').trim();
-  const email = (req.body.email || '').trim();
+  const email = normalizarEmail(req.body.email);
   const documento = (req.body.documento || '').trim();
   const cursoId = req.body.cursoId || null;
 
   if (!nombre || !apellido || !email || !documento) {
     return res.status(400).json({ ok: false, error: 'Nombre, apellido, email y documento son obligatorios.' });
+  }
+  if (!emailValido(email)) {
+    return res.status(400).json({ ok: false, error: 'El email no es válido.' });
+  }
+  try {
+    const existente = await emailEnUso(email);
+    if (existente) {
+      return res.status(400).json({
+        ok: false,
+        error: existente === email
+          ? `Ya existe una cuenta con ${email}.`
+          : `Ya existe una cuenta con ${existente}, que en Gmail es la misma casilla que ${email}.`,
+      });
+    }
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: 'No pudimos verificar el email.' });
   }
 
   // Contraseña temporal (el alumno la cambia luego desde Mi perfil).

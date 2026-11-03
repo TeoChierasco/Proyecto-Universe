@@ -10,11 +10,19 @@
 const express = require('express');
 const { supabaseAdmin, nuevoClientePublico, hasAdmin } = require('../config/supabase');
 const requireAuth = require('../middleware/requireAuth');
+const { normalizarEmail, emailValido, emailEnUso } = require('../utils/email');
 
 const router = express.Router();
 
 const ROLES_VALIDOS = ['alumno', 'padre', 'profesor', 'preceptor', 'secretaria', 'director'];
 const NIVELES_ACTIVOS = ['secundario'];
+
+// Nombres para los mensajes (iguales a los de frontend/js/app.js).
+const NOMBRE_ROL = {
+  alumno: 'Alumno/a', padre: 'Padre / Madre / Tutor', profesor: 'Profesor/a',
+  preceptor: 'Preceptor/a', secretaria: 'Secretaría', director: 'Director/a',
+};
+const NOMBRE_NIVEL = { primario: 'Nivel Primario', secundario: 'Nivel Secundario', terciario: 'Nivel Terciario' };
 
 // Roles que requieren un código de aprobación para registrarse solos:
 //   - alumno, padre, profesor y preceptor → código emitido por Secretaría
@@ -28,7 +36,11 @@ const ROLES_SIN_AUTORREGISTRO = ['director'];
 //  POST /api/auth/login
 // ------------------------------------------------------------
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body || {};
+  const { password } = req.body || {};
+  const email = normalizarEmail(req.body && req.body.email);
+  // Rol y nivel que el usuario eligió antes de ingresar (pantalla de Nivel y Rol).
+  const rolElegido = req.body && req.body.rol;
+  const nivelElegido = req.body && req.body.nivel;
 
   if (!email || !password) {
     return res.status(400).json({ ok: false, error: 'Email y contraseña son obligatorios.' });
@@ -63,6 +75,20 @@ router.post('/login', async (req, res) => {
         ok: false,
         error: 'Tu cuenta no tiene un perfil asociado. Contactá a la administración.',
       });
+    }
+
+    // La cuenta tiene que ser del rol y del nivel elegidos. Si no coincide,
+    // no se entrega la sesión (y se cierra la que abrió Supabase).
+    const rolNoCoincide = rolElegido && perfil.rol !== rolElegido;
+    const nivelNoCoincide = nivelElegido && perfil.nivel !== nivelElegido;
+    if (rolNoCoincide || nivelNoCoincide) {
+      if (data.session) {
+        try { await supabaseAdmin.auth.admin.signOut(data.session.access_token); } catch (e) { /* sin sesión que cerrar */ }
+      }
+      const error = rolNoCoincide
+        ? `Esta cuenta es de ${NOMBRE_ROL[perfil.rol] || perfil.rol}, pero elegiste ingresar como ${NOMBRE_ROL[rolElegido] || rolElegido}. Volvé atrás y elegí el rol correcto.`
+        : `Esta cuenta pertenece al ${NOMBRE_NIVEL[perfil.nivel] || perfil.nivel}, pero elegiste ${NOMBRE_NIVEL[nivelElegido] || nivelElegido}. Volvé atrás y elegí el nivel correcto.`;
+      return res.status(403).json({ ok: false, codigo: rolNoCoincide ? 'rol_distinto' : 'nivel_distinto', error });
     }
 
     return res.json({
@@ -286,11 +312,15 @@ router.post('/restablecer-password', async (req, res) => {
 //  POST /api/auth/register
 // ------------------------------------------------------------
 router.post('/register', async (req, res) => {
-  const { nombre, apellido, email, password, rol, nivel, codigo } = req.body || {};
+  const { nombre, apellido, password, rol, nivel, codigo } = req.body || {};
+  const email = normalizarEmail(req.body && req.body.email);
   const documento = (req.body.documento || '').trim() || null;
 
   if (!nombre || !apellido || !email || !password || !rol) {
     return res.status(400).json({ ok: false, error: 'Todos los campos son obligatorios.' });
+  }
+  if (!emailValido(email)) {
+    return res.status(400).json({ ok: false, error: 'El email no es válido.' });
   }
   if (rol === 'alumno' && !documento) {
     return res.status(400).json({ ok: false, error: 'El documento (DNI) del alumno es obligatorio.' });
@@ -331,6 +361,14 @@ router.post('/register', async (req, res) => {
   };
 
   try {
+    // 0. Un email = una sola cuenta (también para variantes de Gmail con puntos o "+").
+    if (await emailEnUso(email)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Ya existe una cuenta con ese email. En Gmail, los puntos y lo que va después de "+" no cuentan como un email distinto. Si es tuyo, ingresá o recuperá tu contraseña.',
+      });
+    }
+
     // 1. Validar el código de aprobación (si el rol lo requiere).
     if (ROLES_CON_CODIGO.includes(rol)) {
       const { data: cod, error: codError } = await supabaseAdmin
